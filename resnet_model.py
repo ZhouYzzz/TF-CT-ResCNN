@@ -77,22 +77,26 @@ def fixed_padding(inputs, kernel_size, data_format):
   return padded_inputs
 
 
-def conv2d_fixed_padding(inputs, filters, kernel_size, strides, data_format):
+def conv2d_fixed_padding(inputs, filters, kernel_size, strides, data_format, transpose=False):
   """Strided 2-D convolution with explicit padding."""
   # The padding is consistent and is based only on `kernel_size`, not on the
   # dimensions of `inputs` (as opposed to using `tf.layers.conv2d` alone).
-  if strides > 1:
-    inputs = fixed_padding(inputs, kernel_size, data_format)
-
-  return tf.layers.conv2d(
-      inputs=inputs, filters=filters, kernel_size=kernel_size, strides=strides,
-      padding=('SAME' if strides == 1 else 'VALID'), use_bias=False,
-      kernel_initializer=tf.variance_scaling_initializer(),
-      data_format=data_format)
+  if not transpose:
+      return tf.layers.conv2d(
+          inputs=inputs, filters=filters, kernel_size=kernel_size, strides=strides,
+          padding='SAME', use_bias=False,
+          kernel_initializer=tf.variance_scaling_initializer(),
+          data_format=data_format)
+  else:
+      return tf.layers.conv2d_transpose(
+          inputs=inputs, filters=filters, kernel_size=kernel_size, strides=strides,
+          padding='SAME', use_bias=False,
+          kernel_initializer=tf.variance_scaling_initializer(),
+          data_format=data_format)
 
 
 def building_block(inputs, filters, is_training, projection_shortcut, strides,
-                   data_format):
+                   data_format, transpose=False):
   """Standard building block for residual networks with BN before convolutions.
 
   Args:
@@ -120,12 +124,12 @@ def building_block(inputs, filters, is_training, projection_shortcut, strides,
 
   inputs = conv2d_fixed_padding(
       inputs=inputs, filters=filters, kernel_size=3, strides=strides,
-      data_format=data_format)
+      data_format=data_format, transpose=transpose)
 
   inputs = batch_norm_relu(inputs, is_training, data_format)
   inputs = conv2d_fixed_padding(
       inputs=inputs, filters=filters, kernel_size=3, strides=1,
-      data_format=data_format)
+      data_format=data_format, transpose=transpose)
 
   return inputs + shortcut
 
@@ -176,7 +180,7 @@ def bottleneck_block(inputs, filters, is_training, projection_shortcut,
 
 
 def block_layer(inputs, filters, block_fn, blocks, strides, is_training, name,
-                data_format):
+                data_format, transpose=False):
   """Creates one layer of blocks for the ResNet model.
 
   Args:
@@ -202,14 +206,14 @@ def block_layer(inputs, filters, block_fn, blocks, strides, is_training, name,
   def projection_shortcut(inputs):
     return conv2d_fixed_padding(
         inputs=inputs, filters=filters_out, kernel_size=1, strides=strides,
-        data_format=data_format)
+        data_format=data_format, transpose=transpose)
 
   # Only the first block per block_layer uses projection_shortcut and strides
   inputs = block_fn(inputs, filters, is_training, projection_shortcut, strides,
-                    data_format)
+                    data_format, transpose)
 
   for _ in range(1, blocks):
-    inputs = block_fn(inputs, filters, is_training, None, 1, data_format)
+    inputs = block_fn(inputs, filters, is_training, None, 1, data_format, transpose)
 
   return tf.identity(inputs, name)
 

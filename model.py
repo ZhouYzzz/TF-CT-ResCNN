@@ -12,28 +12,48 @@ _IC = 1
 def _conv_deconv(inputs, block_fn, is_training, data_format):
     shortcut = inputs
     inputs = conv2d_fixed_padding(
-        inputs=inputs, filters=16, kernel_size=7, strides=2,
-        data_format=data_format) # 1/2
-    inputs = block_layer(
-        inputs=inputs, filters=32, block_fn=block_fn, blocks=2,
-        strides=2, is_training=is_training, name='block_layer1',
-        data_format=data_format) # 1/4
+        inputs=inputs, filters=32, kernel_size=5, strides=1,
+        data_format=data_format, transpose=True) # 1
     inputs = block_layer(
         inputs=inputs, filters=64, block_fn=block_fn, blocks=2,
-        strides=2, is_training=is_training, name='block_layer2',
-        data_format=data_format) # 1/8
-    inputs = block_layer(
-        inputs=inputs, filters=32, block_fn=block_fn, blocks=2,
-        strides=2, is_training=is_training, name='block_layer3',
-        data_format=data_format, transpose=True) # 1/4
-    inputs = block_layer(
-        inputs=inputs, filters=16, block_fn=block_fn, blocks=2,
-        strides=2, is_training=is_training, name='block_layer3',
-        data_format=data_format, transpose=True) # 1/2
+        strides=1, is_training=is_training, name='block_layer1',
+        data_format=data_format) # 1/4
     inputs = conv2d_fixed_padding(
-        inputs=inputs, filters=1, kernel_size=7, strides=2,
+        inputs=inputs, filters=1, kernel_size=5, strides=1,
         data_format=data_format, transpose=True) # 1
-    inputs = inputs + shortcut
+    #inputs = conv2d_fixed_padding(
+    #    inputs=inputs, filters=64, kernel_size=7, strides=1,
+    #    data_format=data_format) # 1
+    #inputs = conv2d_fixed_padding(
+    #    inputs=inputs, filters=32, kernel_size=5, strides=1,
+    #    data_format=data_format) # 1
+    #inputs = conv2d_fixed_padding(
+    #    inputs=inputs, filters=1, kernel_size=5, strides=1,
+    #    data_format=data_format) # 1
+    #inputs = inputs + shortcut
+    #inputs = conv2d_fixed_padding(
+    #    inputs=inputs, filters=16, kernel_size=7, strides=2,
+    #    data_format=data_format) # 1/2
+    #inputs = block_layer(
+    #    inputs=inputs, filters=32, block_fn=block_fn, blocks=2,
+    #    strides=2, is_training=is_training, name='block_layer1',
+    #    data_format=data_format) # 1/4
+    #inputs = block_layer(
+    #    inputs=inputs, filters=64, block_fn=block_fn, blocks=2,
+    #    strides=2, is_training=is_training, name='block_layer2',
+    #    data_format=data_format) # 1/8
+    #inputs = block_layer(
+    #    inputs=inputs, filters=32, block_fn=block_fn, blocks=2,
+    #    strides=2, is_training=is_training, name='block_layer3',
+    #    data_format=data_format, transpose=True) # 1/4
+    #inputs = block_layer(
+    #    inputs=inputs, filters=16, block_fn=block_fn, blocks=2,
+    #    strides=2, is_training=is_training, name='block_layer3',
+    #    data_format=data_format, transpose=True) # 1/2
+    #inputs = conv2d_fixed_padding(
+    #    inputs=inputs, filters=1, kernel_size=7, strides=2,
+    #    data_format=data_format, transpose=True) # 1
+    #inputs = inputs + shortcut
     return inputs
 
 def _PRJ_net(inputs, is_training, data_format):
@@ -84,12 +104,12 @@ def model(inputs, is_training, data_format='channels_first'):
     with tf.name_scope('PRJ'):
         inputs = _PRJ_net(inputs, is_training, data_format)
         print inputs
-    with tf.name_scope('FBP'):
-        inputs = _FBP_net(inputs, is_training, data_format)
-        print inputs
-    with tf.name_scope('RFN'):
-        inputs = _RFN_net(inputs, is_training, data_format)
-        print inputs
+    #with tf.name_scope('FBP'):
+    #    inputs = _FBP_net(inputs, is_training, data_format)
+    #    print inputs
+    #with tf.name_scope('RFN'):
+    #    inputs = _RFN_net(inputs, is_training, data_format)
+    #    print inputs
     return inputs
 
 def main(_):

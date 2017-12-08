@@ -85,13 +85,15 @@ def conv2d_fixed_padding(inputs, filters, kernel_size, strides, data_format, tra
       return tf.layers.conv2d(
           inputs=inputs, filters=filters, kernel_size=kernel_size, strides=strides,
           padding='SAME', use_bias=False,
-          kernel_initializer=tf.variance_scaling_initializer(),
+          kernel_initializer=tf.zeros_initializer(),
+          #kernel_initializer=tf.variance_scaling_initializer(),
           data_format=data_format)
   else:
       return tf.layers.conv2d_transpose(
           inputs=inputs, filters=filters, kernel_size=kernel_size, strides=strides,
           padding='SAME', use_bias=False,
-          kernel_initializer=tf.variance_scaling_initializer(),
+          kernel_initializer=tf.zeros_initializer(),
+          #kernel_initializer=tf.variance_scaling_initializer(),
           data_format=data_format)
 
 

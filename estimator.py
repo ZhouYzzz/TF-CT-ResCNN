@@ -43,14 +43,16 @@ def model_fn(features, labels, mode, params):
         print projection, labels['projection']
         tf.summary.image('projection', tf.transpose(projection,perm=[0,2,3,1]), max_outputs=2)
         tf.summary.image('projection_label', tf.transpose(labels['projection'],perm=[0,2,3,1]), max_outputs=2)
-        loss = tf.nn.l2_loss(projection - labels['projection']) / FLAGS.batch_size
-        #+ _WEIGHT_DECAY * tf.add_n([tf.nn.l2_loss(v) for v in tf.trainable_variables()])
+        loss = tf.nn.l2_loss(projection - labels['projection']) / FLAGS.batch_size + _WEIGHT_DECAY * tf.add_n([tf.nn.l2_loss(v) for v in tf.trainable_variables()])
         tf.summary.scalar('loss', loss)
         tf.identity(loss, 'prj_loss')
         global_step = tf.train.get_or_create_global_step()
         optimizer = tf.train.MomentumOptimizer(
                 learning_rate=_LEARNING_RATE,
                 momentum=_MOMENTUM)
+        tvars = tf.trainable_variables()
+        grads, _ = tf.clip_by_global_norm(tf.gradients(loss, tvars), 1e-5)
+        optimizer.apply_gradients(zip(grads, tvars))
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
             train_op = optimizer.minimize(loss, global_step)
@@ -85,7 +87,7 @@ def main(_):
                 'prj_loss': 'prj_loss'
                 }
         logging_hook = tf.train.LoggingTensorHook(
-                tensors=tensors_to_log, every_n_iter=100)
+                tensors=tensors_to_log, every_n_iter=10)
         estimator.train(input_fn=lambda: input_fn(True, FLAGS.data_dir, FLAGS.batch_size, FLAGS.epochs_per_eval), hooks=[logging_hook])
 if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)

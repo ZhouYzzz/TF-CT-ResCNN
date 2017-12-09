@@ -10,17 +10,42 @@ _IH = 200
 _IC = 1
 
 def _conv_deconv(inputs, block_fn, is_training, data_format):
+    inputs = conv2d_fixed_padding(
+        inputs=inputs, filters=32, kernel_size=5, strides=1,
+        data_format=data_format) # 1
+    inputs = conv2d_fixed_padding(
+        inputs=inputs, filters=32, kernel_size=5, strides=1,
+        data_format=data_format) # 1
     shortcut = inputs
     inputs = conv2d_fixed_padding(
         inputs=inputs, filters=32, kernel_size=5, strides=1,
-        data_format=data_format, transpose=True) # 1
-    inputs = block_layer(
-        inputs=inputs, filters=64, block_fn=block_fn, blocks=2,
-        strides=1, is_training=is_training, name='block_layer1',
-        data_format=data_format) # 1/4
+        data_format=data_format) # 1
+    inputs += shortcut
+    inputs = conv2d_fixed_padding(
+        inputs=inputs, filters=32, kernel_size=5, strides=1,
+        data_format=data_format) # 1
+    shortcut = inputs
+    inputs = conv2d_fixed_padding(
+        inputs=inputs, filters=32, kernel_size=5, strides=1,
+        data_format=data_format) # 1
+    inputs += shortcut
+    inputs = conv2d_fixed_padding(
+        inputs=inputs, filters=16, kernel_size=5, strides=1,
+        data_format=data_format) # 1
     inputs = conv2d_fixed_padding(
         inputs=inputs, filters=1, kernel_size=5, strides=1,
-        data_format=data_format, transpose=True) # 1
+        data_format=data_format) # 1
+    #shortcut = inputs
+    #inputs = conv2d_fixed_padding(
+    #    inputs=inputs, filters=32, kernel_size=5, strides=1,
+    #    data_format=data_format, transpose=True) # 1
+    #inputs = block_layer(
+    #    inputs=inputs, filters=64, block_fn=block_fn, blocks=2,
+    #    strides=1, is_training=is_training, name='block_layer1',
+    #    data_format=data_format) # 1/4
+    #inputs = conv2d_fixed_padding(
+    #    inputs=inputs, filters=1, kernel_size=5, strides=1,
+    #    data_format=data_format, transpose=True) # 1
     #inputs = conv2d_fixed_padding(
     #    inputs=inputs, filters=64, kernel_size=7, strides=1,
     #    data_format=data_format) # 1

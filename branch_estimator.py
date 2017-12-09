@@ -7,16 +7,26 @@ flags = tf.flags
 flags.DEFINE_string('data_dir', './dataset', '')
 flags.DEFINE_string('model_dir', './model', '')
 flags.DEFINE_integer('train_epochs', 100, '')
-flags.DEFINE_integer('batch_size', 32, '')
-flags.DEFINE_integer('epochs_per_eval', 20, '')
+flags.DEFINE_integer('batch_size', 128, '')
+flags.DEFINE_integer('epochs_per_eval', 10, '')
 # flags.DEFINE_string('data_format', 'channels_first', '')
 FLAGS = flags.FLAGS
 import os, sys, glob
 from resnet_model import conv2d_fixed_padding, batch_norm_relu
 
-_LEARNING_RATE = 1e-1
+_LEARNING_RATE = 1e-3
 _WEIGHT_DECAY = 2e-4
 _MOMENTUM = 0.9
+_PW = 72
+_PH = 216
+_PC = 1
+_IW = 200
+_IH = 200
+_IC = 1
+_NUM_SAMPLES = {
+        'train': 17120,
+        'val': 592
+        }
 
 def variable_summaries(name, var):
     """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
@@ -51,7 +61,7 @@ def input_fn(is_training, data_dir, batch_size, num_epochs):
     dataset = tf.data.TFRecordDataset(record_filenames)
     if is_training:
         dataset = dataset.repeat(num_epochs)
-    dataset = dataset.map(parse_example).prefetch(batch_size)
+    dataset = dataset.map(_parse_example).prefetch(batch_size)
     dataset = dataset.batch(batch_size)
     iterator = dataset.make_one_shot_iterator()
     sparse3, sparse1 = iterator.get_next()
@@ -60,6 +70,7 @@ def input_fn(is_training, data_dir, batch_size, num_epochs):
 # conv2d_fixed_padding(inputs, filters, kernel_size, strides, data_format, transpose=False)
 # batch_norm_relu(inputs, is_training, data_format)
 def model(inputs, data_format='channels_first'):
+    shortcut0 = inputs
     inputs = conv2d_fixed_padding(inputs, 32, (9,3), (1,1), data_format)
     inputs = batch_norm_relu(inputs, True, data_format)
     inputs = conv2d_fixed_padding(inputs, 32, (9,3), (1,1), data_format)
@@ -77,23 +88,39 @@ def model(inputs, data_format='channels_first'):
     inputs = conv2d_fixed_padding(inputs, 16, (9,3), (1,1), data_format)
     inputs = batch_norm_relu(inputs, True, data_format)
     inputs = conv2d_fixed_padding(inputs, 1, (9,3), (1,1), data_format)
+    inputs = inputs + shortcut0
     return inputs
 
 def train_model_fn(features, labels, mode, params):
-    assert mode == tf.estimator.ModeKeys.TRAIN
-    tf.summary.image('inputs', features)
+    #assert mode == tf.estimator.ModeKeys.TRAIN
+    #tf.summary.image('inputs', tf.transpose(features,perm=[0,2,3,1]))
     outputs = model(features)
+    #variable_summaries('outputs', outputs)
+    #variable_summaries('labels', labels)
     diff = labels - outputs
-    tf.summary.image('diff', diff)
-    variable_summaries('diff', diff)
-    diff_loss = tf.nn.l2_loss(diff) / FLAGS.batch_size
-    tf.summary.scalar('diff_loss', diff_loss)
+    tf.summary.image('diff', tf.transpose(diff,perm=[0,2,3,1]), max_outputs=1)
+    #tf.summary.image('outputs', tf.transpose(outputs,perm=[0,2,3,1]), max_outputs=1)
+    #tf.summary.image('labels', tf.transpose(labels,perm=[0,2,3,1]), max_outputs=1)
+    visual = tf.concat([outputs, labels],axis=3)
+    tf.summary.image('outputs&labels', tf.transpose(visual,perm=[0,2,3,1]),max_outputs=1)
+    #variable_summaries('diff', diff)
+    diff_loss = tf.nn.l2_loss(diff) / (FLAGS.batch_size * _PW * _PH * _PC)
+    #tf.summary.scalar('diff_loss', diff_loss)
     reg_loss = _WEIGHT_DECAY * tf.add_n([tf.nn.l2_loss(v) for v in tf.trainable_variables()])
-    tf.summary.scalar('reg_loss', reg_loss)
+    #tf.summary.scalar('reg_loss', reg_loss)
     loss = diff_loss + reg_loss
+    tf.identity(loss, 'loss')
+    tf.summary.scalar('train_loss', loss)
+    ave_loss = tf.metrics.mean(loss)
+    metrics = {'ave_loss': ave_loss}
     global_step = tf.train.get_or_create_global_step()
+    batches_per_epoch = _NUM_SAMPLES['train'] / FLAGS.batch_size
+    boundaries = [int(batches_per_epoch * epoch) for epoch in [40, 60, 80]]
+    values = [_LEARNING_RATE * decay for decay in [1, 0.1, 0.01, 0.001]]
+    learning_rate = tf.train.piecewise_constant(
+                            tf.cast(global_step, tf.int32), boundaries, values)
     optimizer = tf.train.MomentumOptimizer(
-            learning_rate=_LEARNING_RATE,
+            learning_rate=learning_rate,
             momentum=_MOMENTUM)
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops):
@@ -101,19 +128,47 @@ def train_model_fn(features, labels, mode, params):
     return tf.estimator.EstimatorSpec(
             mode=tf.estimator.ModeKeys.TRAIN,
             loss=loss,
-            train_op=train_op)
+            train_op=train_op,
+            eval_metric_ops=metrics)
+
+def eval_model_fn(features, labels, mode, params):
+    outputs = model(features)
+    diff = labels - outputs
+    diff_loss = tf.nn.l2_loss(diff) / (FLAGS.batch_size * _PW * _PH * _PC)
+    reg_loss = _WEIGHT_DECAY * tf.add_n([tf.nn.l2_loss(v) for v in tf.trainable_variables()])
+    loss = diff_loss + reg_loss
+    tf.identity(loss, 'eval_loss')
+    tf.summary.scalar('eval_loss', loss)
+    ave_loss = tf.metrics.mean(loss)
+    metrics = {'ave_loss': ave_loss}
+    return tf.estimator.EstimatorSpec(
+            mode=tf.estimator.ModeKeys.EVAL,
+            loss=loss,
+            train_op=None,
+            eval_metric_ops=metrics)
+
+def model_fn(features, labels, mode, params):
+    if mode == tf.estimator.ModeKeys.TRAIN:
+        return train_model_fn(features, labels, mode, params)
+    elif mode == tf.estimator.ModeKeys.EVAL:
+        return eval_model_fn(features, labels, mode, params)
+    else:
+        raise ValueError()
 
 def main(_):
     run_config = tf.estimator.RunConfig()
 
     estimator = tf.estimator.Estimator(
-            model_fn=train_model_fn, model_dir=FLAGS.model_dir, config=run_config, params={})
+            model_fn=model_fn, model_dir=FLAGS.model_dir, config=run_config, params={})
     for i in range(FLAGS.train_epochs // FLAGS.epochs_per_eval):
         print 'CIRCLE', i
-        tensors_to_log = {'prj_loss': 'prj_loss'}
+        tensors_to_log = {'loss': 'loss'}
         logging_hook = tf.train.LoggingTensorHook(
-                tensors=tensors_to_log, every_n_iter=10)
+                tensors=tensors_to_log, every_n_iter=100)
         estimator.train(input_fn=lambda: input_fn(True, FLAGS.data_dir, FLAGS.batch_size, FLAGS.epochs_per_eval), hooks=[logging_hook])
+        eval_results = estimator.evaluate(input_fn=lambda: input_fn(False, FLAGS.data_dir, FLAGS.batch_size, 1))
+        print eval_results
 
 if __name__ == '__main__':
+    tf.logging.set_verbosity(tf.logging.INFO)
     tf.app.run()

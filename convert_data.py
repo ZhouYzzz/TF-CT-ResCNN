@@ -18,6 +18,7 @@ def main(_):
     train_index = index[set==1]
     val_index = index[set==2]
     print 'All {} examples, {} trains, {} vals'.format(index.size, train_index.size, val_index.size)
+    return
     sparse1 = np.transpose(data['images']['sparse1'].value,[0,1,3,2])
     sparse2 = np.transpose(data['images']['sparse2'].value,[0,1,3,2])
     sparse3 = np.transpose(data['images']['sparse3'].value,[0,1,3,2])

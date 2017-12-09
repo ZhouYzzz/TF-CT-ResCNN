@@ -2,4 +2,4 @@ data/
 dataset/
 *.pyc
 *.swp
-model/
+model*/

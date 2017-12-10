@@ -9,32 +9,55 @@ _IW = 200
 _IH = 200
 _IC = 1
 
-def _conv_deconv(inputs, block_fn, is_training, data_format):
-    inputs = conv2d_fixed_padding(
-        inputs=inputs, filters=32, kernel_size=5, strides=1,
-        data_format=data_format) # 1
-    inputs = conv2d_fixed_padding(
-        inputs=inputs, filters=32, kernel_size=5, strides=1,
-        data_format=data_format) # 1
-    shortcut = inputs
-    inputs = conv2d_fixed_padding(
-        inputs=inputs, filters=32, kernel_size=5, strides=1,
-        data_format=data_format) # 1
-    inputs += shortcut
-    inputs = conv2d_fixed_padding(
-        inputs=inputs, filters=32, kernel_size=5, strides=1,
-        data_format=data_format) # 1
-    shortcut = inputs
-    inputs = conv2d_fixed_padding(
-        inputs=inputs, filters=32, kernel_size=5, strides=1,
-        data_format=data_format) # 1
-    inputs += shortcut
-    inputs = conv2d_fixed_padding(
-        inputs=inputs, filters=16, kernel_size=5, strides=1,
-        data_format=data_format) # 1
-    inputs = conv2d_fixed_padding(
-        inputs=inputs, filters=1, kernel_size=5, strides=1,
-        data_format=data_format) # 1
+def _conv_deconv(inputs, block_fn, is_training, data_format='channels_first'):
+    shortcut0 = inputs
+    inputs = conv2d_fixed_padding(inputs, 32, (5,5), (2,2), data_format) # 1/2
+    inputs = batch_norm_relu(inputs, is_training, data_format)
+    inputs = conv2d_fixed_padding(inputs, 64, (3,3), (2,2), data_format) # 1/4
+    inputs = batch_norm_relu(inputs, is_training, data_format)
+    shortcut1 = inputs
+    inputs = conv2d_fixed_padding(inputs, 128, (3,3), (2,2), data_format) # 1/8
+    inputs = batch_norm_relu(inputs, is_training, data_format)
+    shortcut2 = inputs
+    inputs = conv2d_fixed_padding(inputs, 128, (3,3), (1,1), data_format) # 1/8
+    inputs = batch_norm_relu(inputs, is_training, data_format)
+    inputs = inputs + shortcut2
+    inputs = conv2d_fixed_padding(inputs, 64, (3,3), (2,2), data_format, transpose=True) # 1/4
+    inputs = batch_norm_relu(inputs, is_training, data_format)
+    inputs = inputs + shortcut1
+    inputs = conv2d_fixed_padding(inputs, 32, (3,3), (2,2), data_format, transpose=True) # 1/2
+    inputs = batch_norm_relu(inputs, is_training, data_format)
+    inputs = conv2d_fixed_padding(inputs, 16, (3,3), (2,2), data_format, transpose=True) # 1
+    inputs = batch_norm_relu(inputs, is_training, data_format)
+    inputs = conv2d_fixed_padding(inputs, 1, (5,5), (1,1), data_format) # 1
+    inputs = inputs + shortcut0
+    return inputs
+#def _conv_deconv(inputs, block_fn, is_training, data_format):
+#    inputs = conv2d_fixed_padding(
+#        inputs=inputs, filters=32, kernel_size=5, strides=1,
+#        data_format=data_format) # 1
+#    inputs = conv2d_fixed_padding(
+#        inputs=inputs, filters=32, kernel_size=5, strides=1,
+#        data_format=data_format) # 1
+#    shortcut = inputs
+#    inputs = conv2d_fixed_padding(
+#        inputs=inputs, filters=32, kernel_size=5, strides=1,
+#        data_format=data_format) # 1
+#    inputs += shortcut
+#    inputs = conv2d_fixed_padding(
+#        inputs=inputs, filters=32, kernel_size=5, strides=1,
+#        data_format=data_format) # 1
+#    shortcut = inputs
+#    inputs = conv2d_fixed_padding(
+#        inputs=inputs, filters=32, kernel_size=5, strides=1,
+#        data_format=data_format) # 1
+#    inputs += shortcut
+#    inputs = conv2d_fixed_padding(
+#        inputs=inputs, filters=16, kernel_size=5, strides=1,
+#        data_format=data_format) # 1
+#    inputs = conv2d_fixed_padding(
+#        inputs=inputs, filters=1, kernel_size=5, strides=1,
+#        data_format=data_format) # 1
     #shortcut = inputs
     #inputs = conv2d_fixed_padding(
     #    inputs=inputs, filters=32, kernel_size=5, strides=1,

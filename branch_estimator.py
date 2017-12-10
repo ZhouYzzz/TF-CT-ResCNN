@@ -6,7 +6,7 @@ import tensorflow as tf
 flags = tf.flags
 flags.DEFINE_string('data_dir', './dataset', '')
 flags.DEFINE_string('model_dir', './model', '')
-flags.DEFINE_integer('train_epochs', 100, '')
+flags.DEFINE_integer('train_epochs', 210, '')
 flags.DEFINE_integer('batch_size', 128, '')
 flags.DEFINE_integer('epochs_per_eval', 10, '')
 # flags.DEFINE_string('data_format', 'channels_first', '')
@@ -14,7 +14,7 @@ FLAGS = flags.FLAGS
 import os, sys, glob
 from resnet_model import conv2d_fixed_padding, batch_norm_relu
 
-_LEARNING_RATE = 1e-3
+_LEARNING_RATE = 1e-1
 _WEIGHT_DECAY = 2e-4
 _MOMENTUM = 0.9
 _PW = 72
@@ -70,6 +70,7 @@ def input_fn(is_training, data_dir, batch_size, num_epochs):
 # conv2d_fixed_padding(inputs, filters, kernel_size, strides, data_format, transpose=False)
 # batch_norm_relu(inputs, is_training, data_format)
 def model(inputs, data_format='channels_first'):
+    print 'Using model: 1'
     shortcut0 = inputs
     inputs = conv2d_fixed_padding(inputs, 32, (9,3), (1,1), data_format)
     inputs = batch_norm_relu(inputs, True, data_format)
@@ -91,18 +92,46 @@ def model(inputs, data_format='channels_first'):
     inputs = inputs + shortcut0
     return inputs
 
+def model2(inputs, data_format='channels_first'):
+    shortcut0 = inputs
+    inputs = conv2d_fixed_padding(inputs, 32, (5,5), (2,2), data_format) # 1/2
+    inputs = batch_norm_relu(inputs, True, data_format)
+    inputs = conv2d_fixed_padding(inputs, 64, (3,3), (2,2), data_format) # 1/4
+    inputs = batch_norm_relu(inputs, True, data_format)
+    shortcut1 = inputs
+    inputs = conv2d_fixed_padding(inputs, 128, (3,3), (2,2), data_format) # 1/8
+    inputs = batch_norm_relu(inputs, True, data_format)
+    shortcut2 = inputs
+    inputs = conv2d_fixed_padding(inputs, 128, (3,3), (1,1), data_format) # 1/8
+    inputs = batch_norm_relu(inputs, True, data_format)
+    inputs = inputs + shortcut2
+    inputs = conv2d_fixed_padding(inputs, 64, (3,3), (2,2), data_format, transpose=True) # 1/4
+    inputs = batch_norm_relu(inputs, True, data_format)
+    inputs = inputs + shortcut1
+    inputs = conv2d_fixed_padding(inputs, 32, (3,3), (2,2), data_format, transpose=True) # 1/2
+    inputs = batch_norm_relu(inputs, True, data_format)
+    inputs = conv2d_fixed_padding(inputs, 16, (3,3), (2,2), data_format, transpose=True) # 1
+    inputs = batch_norm_relu(inputs, True, data_format)
+    inputs = conv2d_fixed_padding(inputs, 1, (5,5), (1,1), data_format) # 1
+    inputs = inputs + shortcut0
+    return inputs
+
 def train_model_fn(features, labels, mode, params):
     #assert mode == tf.estimator.ModeKeys.TRAIN
     #tf.summary.image('inputs', tf.transpose(features,perm=[0,2,3,1]))
-    outputs = model(features)
+    outputs = model2(features)
     #variable_summaries('outputs', outputs)
     #variable_summaries('labels', labels)
     diff = labels - outputs
+    diff_net = outputs - features
+    variable_summaries('diff', diff)
+    variable_summaries('diff_net', diff)
     tf.summary.image('diff', tf.transpose(diff,perm=[0,2,3,1]), max_outputs=1)
+    tf.summary.image('diff_net', tf.transpose(diff_net,perm=[0,2,3,1]), max_outputs=1)
     #tf.summary.image('outputs', tf.transpose(outputs,perm=[0,2,3,1]), max_outputs=1)
     #tf.summary.image('labels', tf.transpose(labels,perm=[0,2,3,1]), max_outputs=1)
-    visual = tf.concat([outputs, labels],axis=3)
-    tf.summary.image('outputs&labels', tf.transpose(visual,perm=[0,2,3,1]),max_outputs=1)
+    visual = tf.concat([labels, outputs],axis=3)
+    tf.summary.image('labels_outputs', tf.transpose(visual,perm=[0,2,3,1]),max_outputs=1)
     #variable_summaries('diff', diff)
     diff_loss = tf.nn.l2_loss(diff) / (FLAGS.batch_size * _PW * _PH * _PC)
     #tf.summary.scalar('diff_loss', diff_loss)
@@ -115,8 +144,8 @@ def train_model_fn(features, labels, mode, params):
     metrics = {'ave_loss': ave_loss}
     global_step = tf.train.get_or_create_global_step()
     batches_per_epoch = _NUM_SAMPLES['train'] / FLAGS.batch_size
-    boundaries = [int(batches_per_epoch * epoch) for epoch in [40, 60, 80]]
-    values = [_LEARNING_RATE * decay for decay in [1, 0.1, 0.01, 0.001]]
+    boundaries = [int(batches_per_epoch * epoch) for epoch in [260, 280, 290]]
+    values = [_LEARNING_RATE * decay for decay in [1,1,1,1]]
     learning_rate = tf.train.piecewise_constant(
                             tf.cast(global_step, tf.int32), boundaries, values)
     optimizer = tf.train.MomentumOptimizer(
@@ -132,8 +161,10 @@ def train_model_fn(features, labels, mode, params):
             eval_metric_ops=metrics)
 
 def eval_model_fn(features, labels, mode, params):
-    outputs = model(features)
+    outputs = model2(features)
     diff = labels - outputs
+    visual = tf.concat([labels, outputs],axis=3)
+    tf.summary.image('labels_outputs_eval', tf.transpose(visual,perm=[0,2,3,1]),max_outputs=1)
     diff_loss = tf.nn.l2_loss(diff) / (FLAGS.batch_size * _PW * _PH * _PC)
     reg_loss = _WEIGHT_DECAY * tf.add_n([tf.nn.l2_loss(v) for v in tf.trainable_variables()])
     loss = diff_loss + reg_loss
@@ -156,7 +187,7 @@ def model_fn(features, labels, mode, params):
         raise ValueError()
 
 def main(_):
-    run_config = tf.estimator.RunConfig()
+    run_config = tf.estimator.RunConfig().replace(save_checkpoints_secs=1800)
 
     estimator = tf.estimator.Estimator(
             model_fn=model_fn, model_dir=FLAGS.model_dir, config=run_config, params={})

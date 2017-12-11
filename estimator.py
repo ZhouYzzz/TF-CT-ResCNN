@@ -144,6 +144,7 @@ def model_fn(features, labels, mode, params):
     else:
         raise ValueError('Undefined mode {}'.format(mode))
 
+
 def main(_):
     run_config = tf.estimator.RunConfig()
 
@@ -160,4 +161,3 @@ def main(_):
 if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)
     tf.app.run()
-

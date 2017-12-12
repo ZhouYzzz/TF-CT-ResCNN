@@ -7,13 +7,13 @@ import numpy as np
 flags = tf.flags
 flags.DEFINE_string('model_dir', None, '')
 flags.DEFINE_string('data_dir', './dataset', '')
-flags.DEFINE_integer('train_epochs', 200, '')
-flags.DEFINE_integer('batch_size', 16, '')
-flags.DEFINE_integer('epochs_per_eval', 10, '')
+flags.DEFINE_integer('train_epochs', 20, '')
+flags.DEFINE_integer('batch_size', 10, '')
+flags.DEFINE_integer('epochs_per_eval', 5, '')
 FLAGS = flags.FLAGS
 
 # training parameters
-_LEARNING_RATE = 1e-3
+_LEARNING_RATE = 1e-2
 _WEIGHT_DECAY = 2e-4
 _MOMENTUM = 0.9
 _BATCH_NORM_DECAY = 0.997
@@ -105,18 +105,23 @@ def _slice_concat(inputs_list, axis):
 
 def _FBP_subnet(inputs):
   def _load_weights():
-    W = tf.constant(np.fromfile('data/W.bin', np.float64).astype(np.float32), shape=(1,_PH,_PW*5))
-    F = tf.constant(np.fromfile('data/F.bin', np.float64).astype(np.float32), shape=(1,_PH,_PH))
+    W = tf.constant(np.fromfile('data/W.bin', np.float64).astype(np.float32), shape=(_PH,_PW*5))
+    F = tf.constant(np.fromfile('data/F.bin', np.float64).astype(np.float32), shape=(_PH,_PH))
     Hi = tf.constant(np.fromfile('data/H_indices.bin', np.int64).reshape(-1,2))
     Hv = tf.constant(np.fromfile('data/H_values.bin', np.float64).astype(np.float32))
-    H = tf.SparseTensor(Hi, Hv, dense_shape=(_IH*_IW, _PH*_PW*5))
+    H = tf.SparseTensor(Hi, Hv, dense_shape=[40000,77760])
+    print H
     return H, F, W
   H, F, W = _load_weights()
-  inputs = tf.scan(lambda a,x: tf.multiply(W,x), inputs)
-  inputs = tf.scan(lambda a,x: tf.matmul(F,x), inputs)
-  inputs = tf.reshape(tf.transpose(inputs), shape=(-1,_PH*_PW*5))
-  inputs = tf.sparse_tensor_dense_matmul(H, inputs, adjoint_b=True)
-  inputs = tf.reshape(inputs, shape=(-1,_IC,_IH,_IW))
+  inputs = tf.reshape(inputs,(-1,216,360))
+  inputs = tf.map_fn(lambda x: tf.multiply(W,x), inputs)              # WP
+  inputs = tf.map_fn(lambda x: tf.matmul(F,x), inputs)                # FWP
+  inputs = tf.transpose(inputs, perm=[0,2,1])
+  inputs = tf.layers.flatten(inputs)
+  inputs = tf.sparse_tensor_dense_matmul(H, inputs, adjoint_b=True)   # HFWP
+  inputs = tf.transpose(inputs)
+  inputs = tf.reshape(inputs, shape=(-1,1,_IH,_IW))                 # reshape to (None,1,200,200)
+  inputs = tf.transpose(inputs,perm=[0,1,3,2])
   inputs = tf.identity(inputs, 'outputs')
   return inputs
 
@@ -151,17 +156,21 @@ def _refinement_subnet(inputs, is_training=False):
   inputs = tf.identity(inputs, 'outputs')
   return inputs
 
-def model(inputs, is_training=False):
+def model(inputs, is_training=False, pretrain=False):
   inputs = tf.identity(inputs, 'inputs')
   with tf.name_scope('PRJ'):
     inputs = [_branch_subnet(inputs, i, is_training=is_training) for i in range(5)]
     inputs = _slice_concat(inputs, axis=3)
+    if pretrain:
+      tvars = tf.trainable_variables()
     # tf.add_to_collection('PRJ_trainable', tf.trainable_variables())
   with tf.name_scope('FBP'):
     inputs = _FBP_subnet(inputs)
   with tf.name_scope('RFN'):
     inputs = _refinement_subnet(inputs)
-  return inputs
+    if not pretrain:
+      tvars = tf.trainable_variables()
+  return inputs, tvars
 
 def _visualize(name, image_tensor):
   tf.summary.image(name, tf.transpose(image_tensor,perm=[0,2,3,1]),max_outputs=1)
@@ -183,10 +192,18 @@ def model_fn(features, labels, mode, params):
   # targets = labels  # sparse1
 
   # construct model
-  outputs = model(inputs, is_training=True)
+  outputs, tvars = model(inputs, is_training=True, pretrain=params['pretrain'])
 
   graph = tf.get_default_graph()
-  # loss for prj-est-subnet
+  projections = graph.get_tensor_by_name('PRJ/projections:0')
+  FBP_outputs = graph.get_tensor_by_name('FBP/outputs:0')
+  # outputs: refinement outputs
+  images = labels['image']
+
+  # labels concat
+  labels_inputs = _slice_concat([labels['sparse{}'.format(i+1)] for i in range(5)], axis=3)
+  labels_outputs = _FBP_subnet(labels_inputs)
+
   loss = 0
   for i in range(5):
     branch_outputs = graph.get_tensor_by_name('PRJ/B{}/outputs:0'.format(i))
@@ -194,21 +211,34 @@ def model_fn(features, labels, mode, params):
     branch_diff = branch_outputs - branch_targets
     loss += tf.nn.l2_loss(branch_diff) / (FLAGS.batch_size*_PC*_PH*_PW)
   loss = loss / 5
-  loss += _WEIGHT_DECAY * tf.add_n([tf.nn.l2_loss(v) for v in tf.trainable_variables()])
   loss = tf.identity(loss, 'PRJ_loss')
-  # calculate loss
-  # diff = outputs - targets
-  # net_diff = outputs - inputs
-  # loss = tf.nn.l2_loss(diff) / (FLAGS.batch_size*_PC*_PH*_PW)
-  # loss += _WEIGHT_DECAY * tf.add_n([tf.nn.l2_loss(v) for v in tf.trainable_variables()])
-  # loss = tf.identity(loss, 'loss')
+  tf.summary.scalar('PRJ_loss', loss)
+  if not params['pretrain']:
+    images_diff = outputs - images
+    loss += tf.nn.l2_loss(images_diff) / (FLAGS.batch_size*_IC*_IH*_IW)
+    loss = tf.identity(loss, 'PRJ_RFN_loss')
+    tf.summary.scalar('PRJ_RFN_loss', loss)
 
-  projections = graph.get_tensor_by_name('PRJ/projections:0')
-  projections_labels = _slice_concat([labels['sparse{}'.format(i+1)] for i in range(5)], axis=2)
-  _visualize('projections', projections)
-  _visualize('projections_labels', projections_labels)
+
+    outputs_flatten = tf.layers.flatten(outputs)
+    _visualize('compare_refinement', tf.concat([images, outputs], axis=3))
+  else:
+    outputs_flatten = tf.layers.flatten(FBP_outputs)
+    _visualize('compare_FBP_out', tf.concat([images, labels_outputs, FBP_outputs], axis=3))
+    _visualize('compare_PRJ_out', tf.concat([labels_inputs, projections], axis=2))
+
+  loss += _WEIGHT_DECAY * tf.add_n([tf.nn.l2_loss(v) for v in tvars])
+  loss = tf.identity(loss, 'loss')
+  tf.summary.scalar('loss', loss)
+  images_flatten = tf.layers.flatten(images)
+  rmse = tf.norm(outputs_flatten - images_flatten, axis=1) / tf.norm(images_flatten, axis=1)
+  rmse_metrics = tf.metrics.mean(rmse)
+  # projections_labels = _slice_concat([labels['sparse{}'.format(i+1)] for i in range(5)], axis=2)
+  # rmse = tf.square(tf.layers.flatten(projections - projections_labels)) / tf.square(tf.layers.flatten(projections_labels))
+  # rmse_metrics = tf.metrics.mean(rmse)
+  # _visualize('projections', projections)
+  # _visualize('projections_labels', projections_labels)
   # add summaries
-  # tf.summary.scalar('loss', loss)
   # _visualize('net_diff', net_diff)
   # _visualize('diff', diff)
   # _visualize('targets_vs_outputs', tf.concat([targets, outputs], axis=3))
@@ -219,7 +249,7 @@ def model_fn(features, labels, mode, params):
     global_step = tf.train.get_or_create_global_step()
     batches_per_epoch = _NUM_SAMPLES['train'] // FLAGS.batch_size
     print 'Batches per epoch:', batches_per_epoch
-    boundaries = [batches_per_epoch * epoch for epoch in [120, 160]]
+    boundaries = [batches_per_epoch * epoch for epoch in [10, 15]]
     lr_values = [_LEARNING_RATE * decay for decay in [1, 0.1, 0.01]]
     lr = tf.train.piecewise_constant(tf.cast(global_step, tf.int32), boundaries, lr_values)
     tf.identity(lr, name='learning_rate')
@@ -227,24 +257,32 @@ def model_fn(features, labels, mode, params):
     optimizer = tf.train.MomentumOptimizer(lr, _MOMENTUM)
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops):
-      train_op = optimizer.minimize(loss, global_step)
+      grads_and_vars = optimizer.compute_gradients(loss, tf.trainable_variables())
+      clipped_grads_and_vars = [(tf.clip_by_value(grad, -1e-4, 1e-4), var) for grad, var in grads_and_vars if grad is not None]
+      train_op = optimizer.apply_gradients(grads_and_vars, global_step)
+      # train_op = optimizer.minimize(loss, global_step)
   else:
-    FBP_outputs = graph.get_tensor_by_name('FBP/outputs:0')
-    _visualize('FBP_outputs', FBP_outputs)
-    _visualize('image', labels['image'])
     train_op = None
 
   return tf.estimator.EstimatorSpec(
-      mode=mode, predictions={'outputs': projections}, loss=loss, train_op=train_op)
+      mode=mode, predictions={'outputs': projections}, loss=loss, train_op=train_op, eval_metric_ops={'rmse':rmse_metrics})
 
 def main(_):
   if FLAGS.model_dir is None:
     from time import time
     FLAGS.model_dir = '/tmp/CT/model_{}'.format(int(time()))
     print 'Using temp model_dir:', FLAGS.model_dir
-  estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=FLAGS.model_dir)
+  # TRAINING STAGE 1
+  estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=FLAGS.model_dir, params={'pretrain': True})
   for i in range(FLAGS.train_epochs // FLAGS.epochs_per_eval):
-    tensors_to_log = {'PRJ_loss', 'PRJ_loss'}
+    tensors_to_log = ['loss', 'learning_rate']
+    logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=10)
+    estimator.train(input_fn=lambda: input_fn(True, FLAGS.data_dir, FLAGS.batch_size, FLAGS.epochs_per_eval), hooks=[logging_hook])
+    estimator.evaluate(input_fn=lambda: input_fn(False, FLAGS.data_dir, FLAGS.batch_size, 1))
+  # TRAINING STAGE 2
+  estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=FLAGS.model_dir, params={'pretrain': False})
+  for i in range(FLAGS.train_epochs // FLAGS.epochs_per_eval):
+    tensors_to_log = ['loss', 'learning_rate']
     logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=100)
     estimator.train(input_fn=lambda: input_fn(True, FLAGS.data_dir, FLAGS.batch_size, FLAGS.epochs_per_eval), hooks=[logging_hook])
     estimator.evaluate(input_fn=lambda: input_fn(False, FLAGS.data_dir, FLAGS.batch_size, 1))

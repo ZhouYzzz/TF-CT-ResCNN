@@ -56,21 +56,33 @@ def main(_):
     H = system_metric()
     W = W_mat()
     F = F_mat()
+    print H
     #inputs = tf.ones([10,77760],tf.float64)
     #outputs = tf.sparse_tensor_dense_matmul(H, inputs, adjoint_b=True)
     #outputs = tf.reshape(outputs, (-1,200,200))
     #outputs2 = tf.sparse_tensor_dense_matmul(H, inputs, adjoint_b=True)
     projection, image = sample_prj()
     projection = tf.cast(projection, tf.float64)
+    print projection
     Wp = tf.multiply(W, projection)
+    print Wp
     FWp = tf.matmul(F, Wp)
-    HFWp = tf.sparse_tensor_dense_matmul(H, tf.reshape(tf.transpose(FWp),shape=(-1,77760)), adjoint_b=True)
+    print FWp
+    FWp = tf.transpose(FWp, perm=[0,2,1])
+    print FWp
+    FWp = tf.reshape(FWp,shape=(-1,77760))
+    print FWp
+    #HFWp = tf.sparse_tensor_dense_matmul(H, tf.reshape(tf.transpose(FWp),shape=(-1,77760)), adjoint_b=True)
+    HFWp = tf.sparse_tensor_dense_matmul(H, FWp, adjoint_b=True)
+    print HFWp
     HFWp = tf.transpose(tf.reshape(HFWp, shape=(-1,1,200,200)))
+    HFWp = tf.cast(HFWp,tf.float32)
     tf.summary.image('HFWp', tf.reshape(HFWp, shape=(-1,200,200,1)), max_outputs=1)
     tf.summary.image('Wp', tf.reshape(Wp, shape=(-1,216,360,1)), max_outputs=1)
     tf.summary.image('FWp', tf.reshape(FWp, shape=(-1,216,360,1)), max_outputs=1)
     tf.summary.image('projection', tf.reshape(projection,shape=(-1,216,360,1)), max_outputs=1)
     tf.summary.image('image', tf.reshape(image,shape=(-1,200,200,1)), max_outputs=1)
+    tf.summary.image('concat', tf.concat([tf.reshape(HFWp, shape=(-1,200,200,1)), tf.reshape(image,shape=(-1,200,200,1))],axis=2), max_outputs=1)
     merged = tf.summary.merge_all()
     summary_write = tf.summary.FileWriter('/tmp/CT_test')
 

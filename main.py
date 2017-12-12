@@ -7,23 +7,19 @@ import numpy as np
 flags = tf.flags
 flags.DEFINE_string('model_dir', None, '')
 flags.DEFINE_string('data_dir', './dataset', '')
-flags.DEFINE_integer('train_epochs', 20, '')
-flags.DEFINE_integer('batch_size', 10, '')
-flags.DEFINE_integer('epochs_per_eval', 5, '')
+flags.DEFINE_integer('train_epochs', 4, '')
+flags.DEFINE_integer('batch_size', 1, '')
+flags.DEFINE_integer('epochs_per_eval', 1, '')
 FLAGS = flags.FLAGS
 
 # training parameters
-_LEARNING_RATE = 1e-2
+_LEARNING_RATE = 1e-3
 _WEIGHT_DECAY = 2e-4
 _MOMENTUM = 0.9
 _BATCH_NORM_DECAY = 0.997
 _BATCH_NORM_EPSILON = 1e-5
-_PW = 72
-_PH = 216
-_PC = 1
-_IW = 200
-_IH = 200
-_IC = 1
+_PC = 1; _PH = 216; _PW = 72
+_IC = 1; _IH = 200; _IW = 200
 _NUM_SAMPLES = {'train': 17120, 'val': 592}
 
 def parse_example(serialized_example):
@@ -36,7 +32,7 @@ def parse_example(serialized_example):
           'sparse5': tf.FixedLenFeature([_PC,_PH,_PW], tf.float32),
           'image': tf.FixedLenFeature([_IC,_IH,_IW], tf.float32),
       })
-  return features['sparse1'], features['sparse2'], features['sparse3'], features['sparse4'], features['sparse5'], features['image']
+  return features#['sparse1'], features['sparse2'], features['sparse3'], features['sparse4'], features['sparse5'], features['image']
 
 def input_fn(is_training, data_dir, batch_size, num_epochs):
   def _get_filenames(is_training, data_dir):
@@ -51,8 +47,9 @@ def input_fn(is_training, data_dir, batch_size, num_epochs):
   dataset = dataset.map(parse_example).prefetch(batch_size)
   dataset = dataset.batch(batch_size)
   iterator = dataset.make_one_shot_iterator()
-  sparse1, sparse2, sparse3, sparse4, sparse5, image = iterator.get_next()
-  return sparse3, {'sparse1':sparse1, 'sparse2':sparse2, 'sparse3': sparse3, 'sparse4': sparse4, 'sparse5': sparse5, 'image': image}
+  labels = iterator.get_next()
+  #sparse1, sparse2, sparse3, sparse4, sparse5, image = iterator.get_next()
+  return {'inputs': labels['sparse3']}, labels#{'sparse1':sparse1, 'sparse2':sparse2, 'sparse3': sparse3, 'sparse4': sparse4, 'sparse5': sparse5, 'image': image}
 
 def _branch_subnet(inputs, index=0, is_training=False):
   def _batch_norm_relu(inputs, is_training):
@@ -105,8 +102,10 @@ def _slice_concat(inputs_list, axis):
 
 def _FBP_subnet(inputs):
   def _load_weights():
-    W = tf.constant(np.fromfile('data/W.bin', np.float64).astype(np.float32), shape=(_PH,_PW*5))
+    W = tf.constant(np.fromfile('data/W.bin', np.float64).astype(np.float32), shape=(_PW*5,_PH))
+    W = tf.transpose(W)
     F = tf.constant(np.fromfile('data/F.bin', np.float64).astype(np.float32), shape=(_PH,_PH))
+    F = tf.transpose(F) # actually this does nothing, since F is symmetric
     Hi = tf.constant(np.fromfile('data/H_indices.bin', np.int64).reshape(-1,2))
     Hv = tf.constant(np.fromfile('data/H_values.bin', np.float64).astype(np.float32))
     H = tf.SparseTensor(Hi, Hv, dense_shape=[40000,77760])
@@ -120,7 +119,7 @@ def _FBP_subnet(inputs):
   inputs = tf.layers.flatten(inputs)
   inputs = tf.sparse_tensor_dense_matmul(H, inputs, adjoint_b=True)   # HFWP
   inputs = tf.transpose(inputs)
-  inputs = tf.reshape(inputs, shape=(-1,1,_IH,_IW))                 # reshape to (None,1,200,200)
+  inputs = tf.reshape(inputs, shape=(-1,1,_IH,_IW))
   inputs = tf.transpose(inputs,perm=[0,1,3,2])
   inputs = tf.identity(inputs, 'outputs')
   return inputs
@@ -157,7 +156,7 @@ def _refinement_subnet(inputs, is_training=False):
   return inputs
 
 def model(inputs, is_training=False, pretrain=False):
-  inputs = tf.identity(inputs, 'inputs')
+  #inputs = tf.identity(inputs, 'inputs')
   with tf.name_scope('PRJ'):
     inputs = [_branch_subnet(inputs, i, is_training=is_training) for i in range(5)]
     inputs = _slice_concat(inputs, axis=3)
@@ -188,11 +187,16 @@ def _summaries(name, var):
 
 def model_fn(features, labels, mode, params):
   # get inputs and regression targets
-  inputs = features # sparse3
+  inputs = features['inputs'] # sparse3
   # targets = labels  # sparse1
 
   # construct model
   outputs, tvars = model(inputs, is_training=True, pretrain=params['pretrain'])
+  # PREDICT SPEC
+  if mode == tf.estimator.ModeKeys.PREDICT:
+    export_output = tf.estimator.export.PredictOutput({'outputs':outputs})
+    return tf.estimator.EstimatorSpec(
+        mode=mode, predictions={'outputs': outputs}, export_outputs={'export_output': export_output})
 
   graph = tf.get_default_graph()
   projections = graph.get_tensor_by_name('PRJ/projections:0')
@@ -210,7 +214,7 @@ def model_fn(features, labels, mode, params):
     branch_targets = labels['sparse{}'.format(i+1)]
     branch_diff = branch_outputs - branch_targets
     loss += tf.nn.l2_loss(branch_diff) / (FLAGS.batch_size*_PC*_PH*_PW)
-  loss = loss / 5
+  #loss = loss / 5
   loss = tf.identity(loss, 'PRJ_loss')
   tf.summary.scalar('PRJ_loss', loss)
   if not params['pretrain']:
@@ -218,7 +222,6 @@ def model_fn(features, labels, mode, params):
     loss += tf.nn.l2_loss(images_diff) / (FLAGS.batch_size*_IC*_IH*_IW)
     loss = tf.identity(loss, 'PRJ_RFN_loss')
     tf.summary.scalar('PRJ_RFN_loss', loss)
-
 
     outputs_flatten = tf.layers.flatten(outputs)
     _visualize('compare_refinement', tf.concat([images, outputs], axis=3))
@@ -249,7 +252,7 @@ def model_fn(features, labels, mode, params):
     global_step = tf.train.get_or_create_global_step()
     batches_per_epoch = _NUM_SAMPLES['train'] // FLAGS.batch_size
     print 'Batches per epoch:', batches_per_epoch
-    boundaries = [batches_per_epoch * epoch for epoch in [10, 15]]
+    boundaries = [batches_per_epoch * epoch for epoch in [2, 3]]
     lr_values = [_LEARNING_RATE * decay for decay in [1, 0.1, 0.01]]
     lr = tf.train.piecewise_constant(tf.cast(global_step, tf.int32), boundaries, lr_values)
     tf.identity(lr, name='learning_rate')
@@ -258,9 +261,8 @@ def model_fn(features, labels, mode, params):
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops):
       grads_and_vars = optimizer.compute_gradients(loss, tf.trainable_variables())
-      clipped_grads_and_vars = [(tf.clip_by_value(grad, -1e-4, 1e-4), var) for grad, var in grads_and_vars if grad is not None]
+      clipped_grads_and_vars = [(tf.clip_by_norm(grad, 1e-2), var) for grad, var in grads_and_vars if grad is not None]
       train_op = optimizer.apply_gradients(grads_and_vars, global_step)
-      # train_op = optimizer.minimize(loss, global_step)
   else:
     train_op = None
 
@@ -273,18 +275,20 @@ def main(_):
     FLAGS.model_dir = '/tmp/CT/model_{}'.format(int(time()))
     print 'Using temp model_dir:', FLAGS.model_dir
   # TRAINING STAGE 1
-  estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=FLAGS.model_dir, params={'pretrain': True})
-  for i in range(FLAGS.train_epochs // FLAGS.epochs_per_eval):
-    tensors_to_log = ['loss', 'learning_rate']
-    logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=10)
-    estimator.train(input_fn=lambda: input_fn(True, FLAGS.data_dir, FLAGS.batch_size, FLAGS.epochs_per_eval), hooks=[logging_hook])
-    estimator.evaluate(input_fn=lambda: input_fn(False, FLAGS.data_dir, FLAGS.batch_size, 1))
+  #estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=FLAGS.model_dir, params={'pretrain': True})
+  #for i in range(FLAGS.train_epochs // FLAGS.epochs_per_eval):
+  #  tensors_to_log = ['loss', 'learning_rate']
+  #  logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=500)
+  #  estimator.train(input_fn=lambda: input_fn(True, FLAGS.data_dir, FLAGS.batch_size, FLAGS.epochs_per_eval), hooks=[logging_hook])
+  #  estimator.evaluate(input_fn=lambda: input_fn(False, FLAGS.data_dir, FLAGS.batch_size, 1))
   # TRAINING STAGE 2
   estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=FLAGS.model_dir, params={'pretrain': False})
   for i in range(FLAGS.train_epochs // FLAGS.epochs_per_eval):
     tensors_to_log = ['loss', 'learning_rate']
-    logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=100)
+    logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=500)
+    tf.reset_default_graph()
     estimator.train(input_fn=lambda: input_fn(True, FLAGS.data_dir, FLAGS.batch_size, FLAGS.epochs_per_eval), hooks=[logging_hook])
+    tf.reset_default_graph()
     estimator.evaluate(input_fn=lambda: input_fn(False, FLAGS.data_dir, FLAGS.batch_size, 1))
 
 if __name__ == '__main__':

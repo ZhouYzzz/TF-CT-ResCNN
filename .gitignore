@@ -2,3 +2,4 @@ data/
 dataset/
 *.pyc
 *.swp
+tmp/

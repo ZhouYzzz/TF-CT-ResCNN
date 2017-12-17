@@ -8,7 +8,7 @@ def _periodic_padding_along_angles(inputs, kernel_size):
   hpad_end = kernel_size[0] - 1 - hpad_beg
   wpad_beg = (kernel_size[1] - 1) // 2
   wpad_end = kernel_size[1] - 1 - wpad_beg
-  inputs = tf.concat([inputs[:,:,:,slice(-1,-1-wpad_beg,-1), inputs, inputs[:,:,:,slice(0,wpad_end,1)]]], axis=3)
+  inputs = tf.concat([inputs[:,:,:,slice(-1,-1-wpad_beg,-1)], inputs, inputs[:,:,:,slice(0,wpad_end,1)]], axis=3)
   inputs = tf.pad(inputs, [[0, 0], [0, 0], [hpad_beg, hpad_end], [0, 0]])
   return inputs
 

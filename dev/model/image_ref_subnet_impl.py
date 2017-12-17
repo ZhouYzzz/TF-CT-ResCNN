@@ -27,11 +27,14 @@ def fixed_padding(inputs, kernel_size):
     A tensor with the same format as the input with the data either intact
     (if kernel_size == 1) or padded (if kernel_size > 1).
   """
-  pad_total = kernel_size - 1
-  pad_beg = pad_total // 2
-  pad_end = pad_total - pad_beg
+  wpad_total = kernel_size[1] - 1
+  wpad_beg = wpad_total // 2
+  wpad_end = wpad_total - wpad_beg
+  hpad_total = kernel_size[0] - 1
+  hpad_beg = hpad_total // 2
+  hpad_end = hpad_total - hpad_beg
   padded_inputs = tf.pad(inputs, [[0, 0], [0, 0],
-                                  [pad_beg, pad_end], [pad_beg, pad_end]])
+                                  [hpad_beg, hpad_end], [wpad_beg, wpad_end]])
   return padded_inputs
 
 
@@ -45,7 +48,7 @@ def conv2d_fixed_padding(inputs, filters, kernel_size, strides, transpose=False)
   inputs = conv2d_fn(
       inputs=inputs, filters=filters, kernel_size=kernel_size, strides=strides,
       padding=('SAME' if strides == 1 else 'VALID'), use_bias=False,
-      kernel_initializer=tf.tf.contrib.layers.xavier_initializer(),
+      kernel_initializer=tf.contrib.layers.xavier_initializer(),
       data_format='channels_first')
   return inputs
 

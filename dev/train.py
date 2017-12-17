@@ -31,7 +31,8 @@ def input_fn(is_training, batch_size, num_epochs):
   dataset = tf.data.TFRecordDataset(record_filenames)
   if is_training:
     dataset = dataset.repeat(num_epochs)
-  dataset = dataset.map(lambda s: tf.parse_example(s, features=train_example_spec()))
+  print train_example_spec()
+  dataset = dataset.map(lambda s: tf.parse_single_example(s, features=train_example_spec()))
   dataset = dataset.prefetch(batch_size)
   dataset = dataset.batch(batch_size)
   iterator = dataset.make_one_shot_iterator()

@@ -3,7 +3,7 @@ import numpy as np
 import os
 
 
-tf.flags.DEFINE_string('fbp_data_dir', './data')
+tf.flags.DEFINE_string('fbp_data_dir', './data', '')
 FLAGS = tf.flags.FLAGS
 
 

@@ -3,7 +3,7 @@ import os, glob
 from model.res_cnn import res_cnn_model
 from model.prj_est_subnet import slice_concat
 from utils.summary import visualize, statistics
-from model.example_spec import train_example_spec
+from model.example_spec import train_example_spec, serve_example_spec
 
 tf.flags.DEFINE_string('data_dir', './dataset', '')
 tf.flags.DEFINE_string('model_dir', './tmp/model_v0', '')
@@ -119,6 +119,9 @@ def train_stage(stage, config, hooks, pretrain=True, pretrain_steps=200):
                                        config=config,
                                        params={'stage': stage, 'batch_size': 1})
     estimator.train(lambda: input_fn(True, 1, 1), hooks=hooks, max_steps=pretrain_steps)
+    estimator.export_savedmodel(
+      FLAGS.model_dir,
+      serving_input_receiver_fn=tf.estimator.export.build_raw_serving_input_receiver_fn(serve_example_spec))
     #eval_results = estimator.evaluate(lambda: input_fn(False, FLAGS.batch_size, 1))
     #print(eval_results)
   #estimator = tf.estimator.Estimator(model_fn=model_fn,

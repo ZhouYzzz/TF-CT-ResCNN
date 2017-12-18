@@ -44,7 +44,7 @@ def model_fn(features, labels, mode, params, config=None):
   # switch stages
   stage = params['stage'] if params.has_key('stage') else FLAGS.batch_size
   batch_size = params['batch_size']
-  print(params)
+  print(params, mode)
 
   inputs = features['inputs']
   predictions = res_cnn_model(inputs, mode == tf.estimator.ModeKeys.TRAIN)
@@ -58,9 +58,6 @@ def model_fn(features, labels, mode, params, config=None):
 
   prj_tvars = tf.trainable_variables('PRJ')
   rfn_tvars = tf.trainable_variables('RFN')
-
-  for v in rfn_tvars:
-    print v
 
   visualize(tf.concat([prj_labels, prj_outputs], axis=2), 'projections')
   visualize(tf.concat([image_labels, fbp_outputs, image_outputs], axis=3), 'images')
@@ -80,6 +77,7 @@ def model_fn(features, labels, mode, params, config=None):
     tf.summary.scalar('learning_rate', learning_rate)
     # BATCH_NORM REQUIREMENTS
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+    print(update_ops)
     with tf.control_dependencies(update_ops):
       base_optimizer = tf.train.MomentumOptimizer(learning_rate=learning_rate, momentum=FLAGS.momentum)
       grads_and_vars = base_optimizer.compute_gradients(loss, prj_tvars if stage == 0 else rfn_tvars)
@@ -97,6 +95,7 @@ def model_fn(features, labels, mode, params, config=None):
   else:
     train_op = None
 
+  #print tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
   return tf.estimator.EstimatorSpec(
     mode=mode,
     predictions=predictions,
@@ -111,44 +110,43 @@ def model_fn(features, labels, mode, params, config=None):
   )
 
 
-def train_stage(stage, config, hooks, pretrain=True, pretrain_steps=5000):
+def train_stage(stage, config, hooks, pretrain=True, pretrain_steps=200):
   print('Training stage {}, pretrain {}'.format(stage, pretrain))
+  tf.reset_default_graph()
   if pretrain:
     estimator = tf.estimator.Estimator(model_fn=model_fn,
                                        model_dir=FLAGS.model_dir,
                                        config=config,
                                        params={'stage': stage, 'batch_size': 1})
-    tf.reset_default_graph()
     estimator.train(lambda: input_fn(True, 1, 1), hooks=hooks, max_steps=pretrain_steps)
-    tf.reset_default_graph()
-    eval_results = estimator.evaluate(lambda: input_fn(False, FLAGS.batch_size, 1))
-    print(eval_results)
-
-  estimator = tf.estimator.Estimator(model_fn=model_fn,
-                                     model_dir=FLAGS.model_dir,
-                                     config=config,
-                                     params={'stage': stage, 'batch_size': FLAGS.batch_size})
-  for epoch in range(FLAGS.num_epoches_per_stage // FLAGS.epoches_per_val):
-    tf.reset_default_graph()
-    estimator.train(lambda: input_fn(True, FLAGS.batch_size, FLAGS.epoches_per_val), hooks=hooks)
-    tf.reset_default_graph()
-    eval_results = estimator.evaluate(lambda: input_fn(False, FLAGS.batch_size, 1))
-    print(eval_results)
+    #eval_results = estimator.evaluate(lambda: input_fn(False, FLAGS.batch_size, 1))
+    #print(eval_results)
+  #estimator = tf.estimator.Estimator(model_fn=model_fn,
+  #                                   model_dir=FLAGS.model_dir,
+  #                                   config=config,
+  #                                   params={'stage': stage, 'batch_size': FLAGS.batch_size})
+  #for epoch in range(FLAGS.num_epoches_per_stage // FLAGS.epoches_per_val):
+  #  tf.reset_default_graph()
+  #  estimator.train(lambda: input_fn(True, FLAGS.batch_size, FLAGS.epoches_per_val), hooks=hooks)
+  #  tf.reset_default_graph()
+  #  eval_results = estimator.evaluate(lambda: input_fn(False, FLAGS.batch_size, 1))
+  #  print(eval_results)
 
 
 def main(_):
   os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.gpus
-  config = tf.estimator.RunConfig().replace(save_summary_steps=200,
-                                            save_checkpoints_steps=2000,
-                                            keep_checkpoint_max=2)
+  config = tf.estimator.RunConfig().replace(save_summary_steps=100,
+                                            keep_checkpoint_max=5)
   tensors_to_log = ['loss', 'learning_rate']
   logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=100)
+  train_stage(2, config=config, hooks=[logging_hook], pretrain=True, pretrain_steps=100)
+  #train_stage(2, config=config, hooks=[logging_hook], pretrain=True, pretrain_steps=200)
   # stage 0
   #train_stage(0, config=config, hooks=[logging_hook], pretrain=True)
   # stage 1
-  train_stage(1, config=config, hooks=[logging_hook], pretrain=True, pretrain_steps=20000)
+  #train_stage(1, config=config, hooks=[logging_hook], pretrain=True, pretrain_steps=400)
   # stage 2
-  train_stage(2, config=config, hooks=[logging_hook], pretrain=False)
+  train_stage(2, config=config, hooks=[logging_hook], pretrain=True, pretrain_steps=600)
 
 if __name__ == '__main__':
   tf.logging.set_verbosity(tf.logging.INFO)

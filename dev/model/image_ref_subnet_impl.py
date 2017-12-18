@@ -54,7 +54,7 @@ def conv2d_fixed_padding(inputs, filters, kernel_size, strides, transpose=False)
 
 
 def image_ref_subnet_core_v0(inputs, is_training):
-  print('Using image_ref_subnet_core_v0')
+  #print('Using image_ref_subnet_core_v0')
   inputs = conv2d_fixed_padding(inputs, 64, (7,7), (1,1))
   inputs = batch_norm_relu(inputs, is_training)
   inputs = conv2d_fixed_padding(inputs, 64, (7,7), (1,1))

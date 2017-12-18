@@ -37,7 +37,7 @@ def conv2d_periodic_padding(inputs, filters, kernel_size, strides, transpose=Fal
 
 
 def prj_est_subnet_core_v0(inputs, is_training):
-  print('Using prj_est_subnet_core_v0')
+  #print('Using prj_est_subnet_core_v0')
   inputs = conv2d_periodic_padding(inputs, 64, (9, 3), (1, 1))
   inputs = batch_norm_relu(inputs, is_training)
   inputs = conv2d_periodic_padding(inputs, 64, (9, 3), (1, 1))
@@ -59,7 +59,7 @@ def prj_est_subnet_core_v0(inputs, is_training):
 
 
 def prj_est_subnet_core_v1(inputs, is_training):
-  print('Using prj_est_subnet_core_v1')
+  #print('Using prj_est_subnet_core_v1')
   return inputs
 
 

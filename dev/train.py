@@ -18,6 +18,8 @@ tf.flags.DEFINE_integer('epoches_per_val', 1, '')
 tf.flags.DEFINE_string('gpus', '0', '')
 FLAGS = tf.flags.FLAGS
 
+_NUM_SAMPLES = {'train': 17120, 'val': 592}
+
 def get_learning_rate():
   return tf.constant(FLAGS.base_lr)
 
@@ -46,55 +48,91 @@ def model_fn(features, labels, mode, params, config=None):
   batch_size = params['batch_size']
   print(params, mode)
 
-  inputs = features['inputs']
-  predictions = res_cnn_model(inputs, mode == tf.estimator.ModeKeys.TRAIN)
   graph = tf.get_default_graph()
+  #print graph.get_operations()
+
+  inputs = features['inputs']
+  #if params['preload']:
+  #  #predictions = res_cnn_model(inputs, mode == tf.estimator.ModeKeys.TRAIN)
+  #  with tf.Session(graph=graph) as sess:
+  #    graphdef = tf.saved_model.loader.load(sess, ['serve'], './tmp/model_v0/1513566387',input_map={'ParseExample/ParseExample:0': inputs, 'global_step:0': graph.get_tensor_by_name('global_step:0')})
+  #    #predictions, = tf.import_graph_def(graphdef.graph_def,input_map={'ParseExample/ParseExample:0': inputs}, return_elements=['RFN/outputs:0'])
+  #    #tf.train.global_step(sess, graph.get_tensor_by_name('global_step:0'))
+  #  predictions = graph.get_tensor_by_name('RFN/outputs:0')
+  #  print graph.get_tensor_by_name('ParseExample/ParseExample:0')
+  #  #print tf.global_variables()
+  #  print tf.train.get_global_step()
+  #else:
+  predictions = res_cnn_model(inputs, mode == tf.estimator.ModeKeys.TRAIN)
+  
+  if mode == tf.estimator.ModeKeys.PREDICT:
+    export_outputs = tf.estimator.export.PredictOutput({'outputs':predictions})
+    return tf.estimator.EstimatorSpec(
+        mode=mode, predictions={'outputs': predictions}, export_outputs={'export_outputs': export_outputs})
 
   prj_labels = slice_concat([labels['sparse{}'.format(i+1)] for i in range(5)], axis=3)
   prj_outputs = graph.get_tensor_by_name('PRJ/outputs:0')
   fbp_outputs = graph.get_tensor_by_name('FBP/outputs:0')
   image_labels = labels['image']
-  image_outputs = tf.zeros_like(predictions) if stage == 0 else predictions
+  image_outputs = predictions
+  visualize_outputs = tf.zeros_like(image_outputs) if stage == 0 else image_outputs
 
   prj_tvars = tf.trainable_variables('PRJ')
   rfn_tvars = tf.trainable_variables('RFN')
 
   visualize(tf.concat([prj_labels, prj_outputs], axis=2), 'projections')
-  visualize(tf.concat([image_labels, fbp_outputs, image_outputs], axis=3), 'images')
+  visualize(tf.concat([image_labels, fbp_outputs, visualize_outputs], axis=3), 'images')
 
+  # loss
   prj_loss = tf.nn.l2_loss(prj_labels - prj_outputs) / (batch_size * 1 * 216 * 360)
   rfn_loss = tf.nn.l2_loss(image_labels - image_outputs) / (batch_size * 1 * 200 * 200)
 
-  # loss
   loss = prj_loss if stage == 0 else rfn_loss
   loss = tf.identity(loss, 'loss')
 
+  # metrics
+  image_labels_f = tf.layers.flatten(image_labels)
+  image_outputs_f = tf.layers.flatten(fbp_outputs if stage == 0 else image_outputs)
+  rmse = tf.norm(image_labels_f - image_outputs_f, axis=1) / tf.norm(image_labels_f, axis=1)
+  rmse_metrics = tf.metrics.mean(rmse)
+
   # train_op
   if mode == tf.estimator.ModeKeys.TRAIN:
-    global_step = tf.train.get_or_create_global_step()
+    global_step = graph.get_tensor_by_name('global_step:0') if params['preload'] else tf.train.get_or_create_global_step()
     learning_rate = get_learning_rate()
     learning_rate = tf.identity(learning_rate, 'learning_rate')
     tf.summary.scalar('learning_rate', learning_rate)
-    # BATCH_NORM REQUIREMENTS
-    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-    print(update_ops)
+
+    # train PRJ net
+    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope='PRJ')
     with tf.control_dependencies(update_ops):
       base_optimizer = tf.train.MomentumOptimizer(learning_rate=learning_rate, momentum=FLAGS.momentum)
-      grads_and_vars = base_optimizer.compute_gradients(loss, prj_tvars if stage == 0 else rfn_tvars)
+      grads_and_vars = base_optimizer.compute_gradients(prj_loss if stage == 0 else rfn_loss, prj_tvars)
       clipped_grads_and_vars = [(tf.clip_by_norm(grad, FLAGS.clip_gradient), var)
                                 for grad, var in grads_and_vars if grad is not None]
-      train_op = base_optimizer.apply_gradients(clipped_grads_and_vars, global_step)
-      if stage == 2:
-        # end to end training
-        second_optimizer = tf.train.MomentumOptimizer(
-          learning_rate=FLAGS.second_lr_ratio * learning_rate, momentum=FLAGS.momentum)
-        second_grad_and_vars = second_optimizer.compute_gradients(loss, prj_tvars)
-        second_clipped_grads_and_vars = [(tf.clip_by_norm(grad, FLAGS.clip_gradient), var)
-                                         for grad, var in second_grad_and_vars if grad is not None]
-        train_op = tf.group(train_op, second_optimizer.apply_gradients(second_clipped_grads_and_vars, global_step))
+      base_train_op = base_optimizer.apply_gradients(clipped_grads_and_vars, global_step)
+
+    # train RFN net
+    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=None)
+    with tf.control_dependencies(update_ops):
+      # end to end training
+      second_optimizer = tf.train.MomentumOptimizer(
+        learning_rate=(FLAGS.second_lr_ratio if stage == 2 else 1) * learning_rate, momentum=FLAGS.momentum)
+      second_grad_and_vars = second_optimizer.compute_gradients(rfn_loss, rfn_tvars)
+      second_clipped_grads_and_vars = [(tf.clip_by_norm(grad, FLAGS.clip_gradient), var)
+                                       for grad, var in second_grad_and_vars if grad is not None]
+      second_train_op = second_optimizer.apply_gradients(second_clipped_grads_and_vars, global_step)
+      if stage == 0:
+        train_op = base_train_op
+      elif stage == 1:
+        train_op = second_train_op
+      elif stage == 2:
+        train_op = tf.group(second_train_op, base_train_op)
   else:
     train_op = None
 
+  #print graph.get_tensor_by_name('PRJ/Branch1/conv2d_2/kernel/Momentum:0')
+  #print graph.get_tensor_by_name('RFN/conv2d_2/kernel/Momentum:0')
   #print tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
   return tf.estimator.EstimatorSpec(
     mode=mode,
@@ -110,46 +148,32 @@ def model_fn(features, labels, mode, params, config=None):
   )
 
 
-def train_stage(stage, config, hooks, pretrain=True, pretrain_steps=200):
-  print('Training stage {}, pretrain {}'.format(stage, pretrain))
-  tf.reset_default_graph()
-  if pretrain:
-    estimator = tf.estimator.Estimator(model_fn=model_fn,
-                                       model_dir=FLAGS.model_dir,
-                                       config=config,
-                                       params={'stage': stage, 'batch_size': 1})
-    estimator.train(lambda: input_fn(True, 1, 1), hooks=hooks, max_steps=pretrain_steps)
-    estimator.export_savedmodel(
-      FLAGS.model_dir,
-      serving_input_receiver_fn=tf.estimator.export.build_raw_serving_input_receiver_fn(serve_example_spec))
-    #eval_results = estimator.evaluate(lambda: input_fn(False, FLAGS.batch_size, 1))
-    #print(eval_results)
-  #estimator = tf.estimator.Estimator(model_fn=model_fn,
-  #                                   model_dir=FLAGS.model_dir,
-  #                                   config=config,
-  #                                   params={'stage': stage, 'batch_size': FLAGS.batch_size})
-  #for epoch in range(FLAGS.num_epoches_per_stage // FLAGS.epoches_per_val):
-  #  tf.reset_default_graph()
-  #  estimator.train(lambda: input_fn(True, FLAGS.batch_size, FLAGS.epoches_per_val), hooks=hooks)
-  #  tf.reset_default_graph()
-  #  eval_results = estimator.evaluate(lambda: input_fn(False, FLAGS.batch_size, 1))
-  #  print(eval_results)
+def train_stage(stage, config, hooks):
+  print('Training stage {}'.format(stage))
+  estimator = tf.estimator.Estimator(model_fn=model_fn,
+                                     model_dir=FLAGS.model_dir,
+                                     config=config,
+                                     params={'stage': stage, 'batch_size': FLAGS.batch_size, 'preload': False})
+  for eval_circ in range(FLAGS.num_epoches_per_stage // FLAGS.epoches_per_val):
+    MAX_STEPS = _NUM_SAMPLES['train']//FLAGS.batch_size*FLAGS.epoches_per_val*(eval_circ+1)
+    estimator.train(lambda: input_fn(True, FLAGS.batch_size, FLAGS.epoches_per_val), hooks=hooks, max_steps=MAX_STEPS)
+    eval_results = estimator.evaluate(lambda: input_fn(False, FLAGS.batch_size, 1))
+    print(eval_results)
 
 
 def main(_):
   os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.gpus
-  config = tf.estimator.RunConfig().replace(save_summary_steps=100,
+  config = tf.estimator.RunConfig().replace(save_checkpoints_secs=100000,
+                                            save_summary_steps=100,
                                             keep_checkpoint_max=5)
   tensors_to_log = ['loss', 'learning_rate']
   logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=100)
-  train_stage(2, config=config, hooks=[logging_hook], pretrain=True, pretrain_steps=100)
-  #train_stage(2, config=config, hooks=[logging_hook], pretrain=True, pretrain_steps=200)
   # stage 0
-  #train_stage(0, config=config, hooks=[logging_hook], pretrain=True)
+  train_stage(0, config=config, hooks=[logging_hook])
   # stage 1
-  #train_stage(1, config=config, hooks=[logging_hook], pretrain=True, pretrain_steps=400)
+  train_stage(1, config=config, hooks=[logging_hook])
   # stage 2
-  train_stage(2, config=config, hooks=[logging_hook], pretrain=True, pretrain_steps=600)
+  train_stage(2, config=config, hooks=[logging_hook])
 
 if __name__ == '__main__':
   tf.logging.set_verbosity(tf.logging.INFO)

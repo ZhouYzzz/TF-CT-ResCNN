@@ -14,5 +14,5 @@ def train_example_spec():
 
 def serve_example_spec():
   spec = dict()
-  spec['sparse3'] = tf.FixedLenFeature(shape=(1, 216, 72), dtype=tf.float32)
+  spec['inputs'] = tf.FixedLenFeature(shape=(1, 216, 72), dtype=tf.float32)
   return spec

@@ -4,3 +4,4 @@ dataset/
 *.swp
 tmp/
 .idea/
+.DS_store

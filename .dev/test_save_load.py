@@ -22,5 +22,6 @@ def main(_):
   print tf.trainable_variables()
   print tf.local_variables()
 
+
 if __name__ == '__main__':
   tf.app.run()

@@ -8,7 +8,7 @@ from model.example_spec import train_example_spec, serve_example_spec
 tf.flags.DEFINE_string('data_dir', './dataset', '')
 tf.flags.DEFINE_string('model_dir', './tmp/model_v0', '')
 tf.flags.DEFINE_integer('batch_size', 10, '')
-tf.flags.DEFINE_float('base_lr', 0.1, '')
+tf.flags.DEFINE_float('base_lr', 0.01, '')
 tf.flags.DEFINE_float('second_lr_ratio', 0.01, '')
 tf.flags.DEFINE_float('momentum', 0.9, '')
 tf.flags.DEFINE_float('clip_gradient', 0.01, '')
@@ -95,6 +95,8 @@ def model_fn(features, labels, mode, params, config=None):
   image_outputs_f = tf.layers.flatten(fbp_outputs if stage == 0 else image_outputs)
   rmse = tf.norm(image_labels_f - image_outputs_f, axis=1) / tf.norm(image_labels_f, axis=1)
   rmse_metrics = tf.metrics.mean(rmse)
+  tf.identity(rmse_metrics[1], name='rmse')
+  tf.summary.scalar('rmse', rmse_metrics[1])
 
   # train_op
   if mode == tf.estimator.ModeKeys.TRAIN:
@@ -139,7 +141,7 @@ def model_fn(features, labels, mode, params, config=None):
     predictions=predictions,
     loss=loss,
     train_op=train_op,
-    eval_metric_ops=None,
+    eval_metric_ops={'rmse': rmse_metrics},
     export_outputs=None,
     training_chief_hooks=None,
     training_hooks=None,
@@ -154,8 +156,8 @@ def train_stage(stage, config, hooks):
                                      model_dir=FLAGS.model_dir,
                                      config=config,
                                      params={'stage': stage, 'batch_size': FLAGS.batch_size, 'preload': False})
+  MAX_STEPS = _NUM_SAMPLES['train']//FLAGS.batch_size*FLAGS.num_epoches_per_stage*(stage+1)
   for eval_circ in range(FLAGS.num_epoches_per_stage // FLAGS.epoches_per_val):
-    MAX_STEPS = _NUM_SAMPLES['train']//FLAGS.batch_size*FLAGS.epoches_per_val*(eval_circ+1)
     estimator.train(lambda: input_fn(True, FLAGS.batch_size, FLAGS.epoches_per_val), hooks=hooks, max_steps=MAX_STEPS)
     eval_results = estimator.evaluate(lambda: input_fn(False, FLAGS.batch_size, 1))
     print(eval_results)
@@ -165,11 +167,11 @@ def main(_):
   os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.gpus
   config = tf.estimator.RunConfig().replace(save_checkpoints_secs=100000,
                                             save_summary_steps=100,
-                                            keep_checkpoint_max=5)
-  tensors_to_log = ['loss', 'learning_rate']
+                                            keep_checkpoint_max=2)
+  tensors_to_log = ['loss', 'learning_rate', 'rmse']
   logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=100)
   # stage 0
-  train_stage(0, config=config, hooks=[logging_hook])
+  #train_stage(0, config=config, hooks=[logging_hook])
   # stage 1
   train_stage(1, config=config, hooks=[logging_hook])
   # stage 2

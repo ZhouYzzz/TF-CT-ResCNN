@@ -38,16 +38,16 @@ def fixed_padding(inputs, kernel_size):
   return padded_inputs
 
 
-def conv2d_fixed_padding(inputs, filters, kernel_size, strides, transpose=False):
+def conv2d_fixed_padding(inputs, filters, kernel_size, strides, transpose=False, padding=True):
   """Strided 2-D convolution with explicit padding."""
   # The padding is consistent and is based only on `kernel_size`, not on the
   # dimensions of `inputs` (as opposed to using `tf.layers.conv2d` alone).
-  if strides > 1:
+  if ((strides > 1) and padding):
     inputs = fixed_padding(inputs, kernel_size)
   conv2d_fn = tf.layers.conv2d_transpose if transpose else tf.layers.conv2d
   inputs = conv2d_fn(
       inputs=inputs, filters=filters, kernel_size=kernel_size, strides=strides,
-      padding=('SAME' if strides == 1 else 'VALID'), use_bias=False,
+      padding=('VALID' if padding else 'SAME'), use_bias=False,
       kernel_initializer=tf.contrib.layers.xavier_initializer(),
       data_format='channels_first')
   return inputs
@@ -75,4 +75,28 @@ def image_ref_subnet_core_v0(inputs, is_training):
   return inputs
 
 def image_ref_subnet_core_v1(inputs, is_training):
+  inputs = conv2d_fixed_padding(inputs, 64, (5,5), (1,1)) # 1/1
+  inputs = batch_norm_relu(inputs, is_training)
+  shortcuts_0 = inputs
+  inputs = conv2d_fixed_padding(inputs, 128, (3,3), (2,2)) # 1/2
+  inputs = batch_norm_relu(inputs, is_training)
+  shortcuts_1 = inputs
+  inputs = conv2d_fixed_padding(inputs, 256, (3,3), (2,2)) # 1/4
+  inputs = batch_norm_relu(inputs, is_training)
+  shortcuts_2 = inputs
+  inputs = conv2d_fixed_padding(inputs, 512, (3,3), (2,2)) # 1/8
+  inputs = batch_norm_relu(inputs, is_training)
+  inputs = conv2d_fixed_padding(inputs, 512, (3,3), (1,1)) # 1/8
+  inputs = batch_norm_relu(inputs, is_training)
+  inputs = conv2d_fixed_padding(inputs, 256, (3,3), (2,2), transpose=True, padding=False) # 1/4
+  inputs = batch_norm_relu(inputs, is_training)
+  inputs += shortcuts_2
+  inputs = conv2d_fixed_padding(inputs, 128, (3,3), (2,2), transpose=True, padding=False) # 1/2
+  inputs = batch_norm_relu(inputs, is_training)
+  inputs += shortcuts_1
+  inputs = conv2d_fixed_padding(inputs, 64, (3,3), (2,2), transpose=True, padding=False) # 1/1
+  inputs = batch_norm_relu(inputs, is_training)
+  inputs += shortcuts_0
+  inputs = conv2d_fixed_padding(inputs, 1, (5,5), (1,1)) # 1/1
+  inputs = tf.identity(inputs, 'outputs')
   return inputs

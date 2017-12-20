@@ -8,7 +8,7 @@ flags = tf.flags
 flags.DEFINE_string('model_dir', None, '')
 flags.DEFINE_string('data_dir', './dataset', '')
 flags.DEFINE_integer('train_epochs', 4, '')
-flags.DEFINE_integer('batch_size', 10, '')
+flags.DEFINE_integer('batch_size', 1, '')
 flags.DEFINE_integer('epochs_per_eval', 1, '')
 FLAGS = flags.FLAGS
 
@@ -90,7 +90,6 @@ def _branch_subnet(inputs, index=0, is_training=False):
     inputs = _batch_norm_relu(inputs, is_training)
     inputs = _conv_padding(inputs, 1, (9,3), (1,1))
     inputs = tf.identity(inputs, 'outputs')
-    print inputs
     return inputs
 
 def _slice_concat(inputs_list, axis):
@@ -123,7 +122,6 @@ def _FBP_subnet(inputs):
   inputs = tf.reshape(inputs, shape=(-1,1,_IH,_IW))
   inputs = tf.transpose(inputs,perm=[0,1,3,2])
   inputs = tf.identity(inputs, 'outputs')
-  print inputs
   return inputs
 
 def _refinement_subnet(inputs, is_training=False):
@@ -155,20 +153,17 @@ def _refinement_subnet(inputs, is_training=False):
   inputs = _batch_norm_relu(inputs, is_training)
   inputs = _conv_padding(inputs, 1, (7,7), (1,1))
   inputs = tf.identity(inputs, 'outputs')
-  print inputs
   return inputs
 
 def model(inputs, is_training=False, pretrain=False):
   #inputs = tf.identity(inputs, 'inputs')
-  with tf.name_scope('PRJ'):
-    with tf.variable_scope('PRJ'):
-      inputs = [_branch_subnet(inputs, i, is_training=is_training) for i in range(5)]
+  with tf.name_scope('PRJ'), tf.variable_scope(''):
+    inputs = [_branch_subnet(inputs, i, is_training=is_training) for i in range(5)]
     inputs = _slice_concat(inputs, axis=3)
   with tf.name_scope('FBP'):
     inputs = _FBP_subnet(inputs)
-  with tf.name_scope('RFN'):
-    with tf.variable_scope('RFN'):
-      inputs = _refinement_subnet(inputs)
+  with tf.name_scope('RFN'), tf.variable_scope(''):
+    inputs = _refinement_subnet(inputs)
   return inputs
 
 def _visualize(name, image_tensor):
@@ -193,8 +188,6 @@ def model_fn(features, labels, mode, params):
   # construct model
   outputs = model(inputs, is_training=True)
 
-  #for v in tf.global_variables():
-  #  print v.name
   if params['stage'] == 0:
     tvars = tf.trainable_variables('PRJ')
   elif params['stage'] == 1:
@@ -202,11 +195,7 @@ def model_fn(features, labels, mode, params):
   elif params['stage'] == 2:
     tvars = tf.trainable_variables()
   else:
-    raise ValueError('params.stage should be 0,1,2. Get:'.format(params['stage']))
-
-  #print 'TVARS'
-  #for v in tvars:
-  #  print v.name
+    raise ValueE
 
   # PREDICT SPEC
   if mode == tf.estimator.ModeKeys.PREDICT:
@@ -226,14 +215,14 @@ def model_fn(features, labels, mode, params):
 
   loss = 0
   for i in range(5):
-    branch_outputs = graph.get_tensor_by_name('PRJ/PRJ/B{}/outputs:0'.format(i))
+    branch_outputs = graph.get_tensor_by_name('PRJ/B{}/outputs:0'.format(i))
     branch_targets = labels['sparse{}'.format(i+1)]
     branch_diff = branch_outputs - branch_targets
     loss += tf.nn.l2_loss(branch_diff) / (FLAGS.batch_size*_PC*_PH*_PW)
   #loss = loss / 5
   loss = tf.identity(loss, 'PRJ_loss')
   tf.summary.scalar('PRJ_loss', loss)
-  if params['stage'] is not 0:
+  if not params['pretrain']:
     images_diff = outputs - images
     loss += tf.nn.l2_loss(images_diff) / (FLAGS.batch_size*_IC*_IH*_IW)
     loss = tf.identity(loss, 'PRJ_RFN_loss')
@@ -291,27 +280,17 @@ def main(_):
     FLAGS.model_dir = '/tmp/CT/model_{}'.format(int(time()))
     print 'Using temp model_dir:', FLAGS.model_dir
   # TRAINING STAGE 1
-  estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=FLAGS.model_dir, params={'stage': 0})
-  tensors_to_log = ['loss', 'learning_rate']
-  logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=500)
-  # pretrain
-  tf.reset_default_graph()
-  estimator.train(input_fn=lambda: input_fn(True, FLAGS.data_dir, 1, FLAGS.epochs_per_eval), hooks=[logging_hook], max_steps=2000)
-  for i in range(FLAGS.train_epochs // FLAGS.epochs_per_eval):
-    tf.reset_default_graph()
-    estimator.train(input_fn=lambda: input_fn(True, FLAGS.data_dir, FLAGS.batch_size, FLAGS.epochs_per_eval), hooks=[logging_hook])
-    tf.reset_default_graph()
-    estimator.evaluate(input_fn=lambda: input_fn(False, FLAGS.data_dir, FLAGS.batch_size, 1))
+  #estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=FLAGS.model_dir, params={'pretrain': True})
+  #for i in range(FLAGS.train_epochs // FLAGS.epochs_per_eval):
+  #  tensors_to_log = ['loss', 'learning_rate']
+  #  logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=500)
+  #  estimator.train(input_fn=lambda: input_fn(True, FLAGS.data_dir, FLAGS.batch_size, FLAGS.epochs_per_eval), hooks=[logging_hook])
+  #  estimator.evaluate(input_fn=lambda: input_fn(False, FLAGS.data_dir, FLAGS.batch_size, 1))
   # TRAINING STAGE 2
-  estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=FLAGS.model_dir, params={'stage': 1})
+  estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=FLAGS.model_dir, params={'pretrain': False})
   for i in range(FLAGS.train_epochs // FLAGS.epochs_per_eval):
-    tf.reset_default_graph()
-    estimator.train(input_fn=lambda: input_fn(True, FLAGS.data_dir, FLAGS.batch_size, FLAGS.epochs_per_eval), hooks=[logging_hook])
-    tf.reset_default_graph()
-    estimator.evaluate(input_fn=lambda: input_fn(False, FLAGS.data_dir, FLAGS.batch_size, 1))
-  # TRAINING STAGE 3
-  estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=FLAGS.model_dir, params={'stage': 2})
-  for i in range(FLAGS.train_epochs // FLAGS.epochs_per_eval):
+    tensors_to_log = ['loss', 'learning_rate']
+    logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=500)
     tf.reset_default_graph()
     estimator.train(input_fn=lambda: input_fn(True, FLAGS.data_dir, FLAGS.batch_size, FLAGS.epochs_per_eval), hooks=[logging_hook])
     tf.reset_default_graph()

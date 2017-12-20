@@ -24,42 +24,72 @@ def batch_norm_relu(inputs, is_training):
   return inputs
 
 
-def conv2d_periodic_padding(inputs, filters, kernel_size, strides, transpose=False):
+def conv2d_periodic_padding(inputs, filters, kernel_size, strides, transpose=False, padding=True):
   """Strided 2-D convolution with explicit padding."""
   # The padding is consistent and is based only on `kernel_size`, not on the
   # dimensions of `inputs` (as opposed to using `tf.layers.conv2d` alone).
   conv2d_fn = tf.layers.conv2d_transpose if transpose else tf.layers.conv2d
-  inputs = _periodic_padding_along_angles(inputs, kernel_size)
+  if padding:
+    inputs = _periodic_padding_along_angles(inputs, kernel_size)
   inputs = conv2d_fn(
-      inputs=inputs, filters=filters, kernel_size=kernel_size, strides=strides, padding='VALID', use_bias=False,
+      inputs=inputs, filters=filters, kernel_size=kernel_size, strides=strides, padding='VALID' if padding else 'SAME', use_bias=False,
       kernel_initializer=tf.contrib.layers.xavier_initializer(), data_format='channels_first')
   return inputs
 
 
 def prj_est_subnet_core_v0(inputs, is_training):
   #print('Using prj_est_subnet_core_v0')
-  inputs = conv2d_periodic_padding(inputs, 64, (9, 3), (1, 1))
-  inputs = batch_norm_relu(inputs, is_training)
-  inputs = conv2d_periodic_padding(inputs, 64, (9, 3), (1, 1))
-  inputs = batch_norm_relu(inputs, is_training)
-  shortcuts = inputs
-  inputs = conv2d_periodic_padding(inputs, 64, (9, 3), (1, 1))
-  inputs = batch_norm_relu(inputs, is_training)
-  inputs += shortcuts
-  inputs = conv2d_periodic_padding(inputs, 64, (9, 3), (1, 1))
-  inputs = batch_norm_relu(inputs, is_training)
-  shortcuts = inputs
-  inputs = conv2d_periodic_padding(inputs, 64, (9, 3), (1, 1))
-  inputs = batch_norm_relu(inputs, is_training)
-  inputs += shortcuts
-  inputs = conv2d_periodic_padding(inputs, 16, (9, 3), (1, 1))
-  inputs = batch_norm_relu(inputs, is_training)
-  inputs = conv2d_periodic_padding(inputs, 1, (9, 3), (1, 1))
+  with tf.variable_scope('Branch{}'.format(index)):
+    inputs = conv2d_periodic_padding(inputs, 64, (9, 3), (1, 1))
+    inputs = batch_norm_relu(inputs, is_training)
+    inputs = conv2d_periodic_padding(inputs, 64, (9, 3), (1, 1))
+    inputs = batch_norm_relu(inputs, is_training)
+    shortcuts = inputs
+    inputs = conv2d_periodic_padding(inputs, 64, (9, 3), (1, 1))
+    inputs = batch_norm_relu(inputs, is_training)
+    inputs += shortcuts
+    inputs = conv2d_periodic_padding(inputs, 64, (9, 3), (1, 1))
+    inputs = batch_norm_relu(inputs, is_training)
+    shortcuts = inputs
+    inputs = conv2d_periodic_padding(inputs, 64, (9, 3), (1, 1))
+    inputs = batch_norm_relu(inputs, is_training)
+    inputs += shortcuts
+    inputs = conv2d_periodic_padding(inputs, 16, (9, 3), (1, 1))
+    inputs = batch_norm_relu(inputs, is_training)
+    inputs = conv2d_periodic_padding(inputs, 1, (9, 3), (1, 1))
+    inputs = tf.identity(inputs, 'outputs')
   return inputs
 
 
-def prj_est_subnet_core_v1(inputs, is_training):
+def prj_est_subnet_core_v1(inputs, index, is_training):
   #print('Using prj_est_subnet_core_v1')
+  with tf.variable_scope('Shared', reuse=tf.AUTO_REUSE):
+    inputs = conv2d_periodic_padding(inputs, 64, (9,3), (1,1)) # 1/1
+    inputs = batch_norm_relu(inputs, is_training)
+    shortcuts_0 = inputs
+    inputs = conv2d_periodic_padding(inputs, 128, (9,3), (2,2)) # 1/2
+    inputs = batch_norm_relu(inputs, is_training)
+    shortcuts_1 = inputs
+    inputs = conv2d_periodic_padding(inputs, 256, (9,3), (2,2)) # 1/4
+    inputs = batch_norm_relu(inputs, is_training)
+    shortcuts_2 = inputs
+    inputs = conv2d_periodic_padding(inputs, 512, (9,3), (2,2)) # 1/8
+    inputs = batch_norm_relu(inputs, is_training)
+    #shortcuts_3 = inputs
+  with tf.variable_scope('Branch{}'.format(index)):
+    inputs = conv2d_periodic_padding(inputs, 512, (9,3), (1,1)) # 1/8
+    inputs = batch_norm_relu(inputs, is_training)
+    inputs = conv2d_periodic_padding(inputs, 256, (9,3), (2,2), transpose=True, padding=False) # 1/4
+    inputs = batch_norm_relu(inputs, is_training)
+    inputs += shortcuts_2
+    inputs = conv2d_periodic_padding(inputs, 128, (9,3), (2,2), transpose=True, padding=False) # 1/2
+    inputs = batch_norm_relu(inputs, is_training)
+    inputs += shortcuts_1
+    inputs = conv2d_periodic_padding(inputs, 64, (9,3), (2,2), transpose=True, padding=False) # 1/1
+    inputs = batch_norm_relu(inputs, is_training)
+    inputs += shortcuts_0
+    inputs = conv2d_periodic_padding(inputs, 1, (9,3), (1,1)) # 1/1
+    inputs = tf.identity(inputs, 'outputs')
   return inputs
 
 

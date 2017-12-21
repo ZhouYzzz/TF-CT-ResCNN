@@ -2,23 +2,31 @@
 The FBP subnet
 """
 import tensorflow as tf
+import os
 import dataset.info as info
+
+tf.flags.DEFINE_string('_system_dir', './model/subnet/', '')
+
+FLAGS = tf.flags.FLAGS
 
 
 def _load_weights():
   with tf.variable_scope('load_weights'):
-    W = tf.decode_raw(tf.read_file('W.bin'), tf.float64)
+    W = tf.decode_raw(tf.read_file(os.path.join(FLAGS._system_dir,'./W.bin')), tf.float64)
     W = tf.cast(W, tf.float32)
     W = tf.reshape(W, shape=(info.PRJ_WIDTH, info.PRJ_HEIGHT))
     W = tf.transpose(W)
-    F = tf.decode_raw(tf.read_file('F.bin'), tf.float64)
+    F = tf.decode_raw(tf.read_file(os.path.join(FLAGS._system_dir,'./F.bin')), tf.float64)
     F = tf.cast(F, tf.float32)
     F = tf.reshape(F, shape=(info.PRJ_HEIGHT, info.PRJ_HEIGHT))
     F = tf.transpose(F)
-    Hi = tf.decode_raw(tf.read_file('H_indices.bin'), tf.int64)
-    Hv = tf.decode_raw(tf.read_file('H_values.bin'), tf.float64)
+    Hi = tf.decode_raw(tf.read_file(os.path.join(FLAGS._system_dir, './H_indices.bin')), tf.int64)
+    Hi = tf.reshape(Hi, shape=(22628160,2))
+    #Hi = tf.reshape(Hi, [-1])
+    Hv = tf.decode_raw(tf.read_file(os.path.join(FLAGS._system_dir, './H_values.bin')), tf.float64)
     Hv = tf.cast(Hv, tf.float32)
-    Hv = tf.reshape(Hv, shape=(-1,2))
+    Hv = tf.reshape(Hv, shape=(22628160,1))
+    Hv = tf.reshape(Hv, [-1])
   W = tf.Variable(initial_value=W, trainable=False)
   F = tf.Variable(initial_value=F, trainable=False)
   Hi = tf.Variable(initial_value=Hi, trainable=False)

@@ -21,6 +21,7 @@ tf.flags.DEFINE_integer('epochs_per_val', 1, '')
 tf.flags.DEFINE_float('learning_rate', 0.01, '')
 tf.flags.DEFINE_float('momentum', 0.9, '')
 tf.flags.DEFINE_float('weight_decay', 2e-4, '')
+tf.flags.DEFINE_float('clip_gradient', 1e-2, '')
 
 tf.flags.DEFINE_string('gpus', '0', '')
 
@@ -122,10 +123,10 @@ def main(unused):
     estimator.train(input_fn=lambda: input_fn(True, FLAGS.batch_size, FLAGS.epochs_per_val),
                     hooks=[logging_hook],
                     max_steps=maximum_training_steps)
-    estimator.evaluate()
     eval_results = estimator.evaluate(input_fn=lambda: input_fn(False, FLAGS.batch_size, 1))
     print(eval_results)
 
 
 if __name__ == '__main__':
+  tf.logging.set_verbosity(tf.logging.INFO)
   tf.app.run()

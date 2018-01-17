@@ -106,7 +106,7 @@ def model_fn(features, labels, mode, params):
 def main(unused):
   os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.gpus
   training_steps_per_epoch = info.NUM_TRAIN // FLAGS.batch_size
-  maximum_training_steps = training_steps_per_epoch * FLAGS.num_epochs
+  maximum_training_steps = (info.NUM_TRAIN // 1) * 2 + training_steps_per_epoch * FLAGS.num_epochs
   model_dir = os.path.join(FLAGS.model_dir, 'stage{}'.format(FLAGS.stage))
 
   config = tf.estimator.RunConfig().replace(save_checkpoints_secs=1e9,

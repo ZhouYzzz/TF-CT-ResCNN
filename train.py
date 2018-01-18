@@ -7,6 +7,7 @@ import dataset.info as info
 from dataset.example_spec import train_example_spec
 from model.res_cnn import res_cnn_model
 from model.subnet.prj_est_impl import slice_concat
+from model.subnet.fbp import fbp_subnet
 from utils.summary import visualize, statistics
 
 tf.flags.DEFINE_integer('stage', 0, '')
@@ -41,6 +42,33 @@ def input_fn(is_training, batch_size, num_epochs):
   iterator = dataset.make_one_shot_iterator()
   features = iterator.get_next()
   return {'inputs': features['sparse3']}, features
+
+
+def rmse(pred, label, name=None):
+  pred = tf.layers.flatten(pred)
+  label = tf.layers.flatten(label)
+  rmse = tf.norm(pred - label, axis=1) / tf.norm(label, axis=1)
+  rmse_metrics = tf.metrics.mean(rmse)
+  tf.identity(rmse_metrics[1], name='rmse')
+  tf.summary.scalar('rmse_{}'.format(name), rmse_metrics[1])
+  return rmse_metrics
+
+
+def fbp_model_fn(features, labels, mode, params):
+  # assert mode == tf.estimator.ModeKeys.EVAL
+  # graph = tf.get_default_graph()
+  full_inputs = slice_concat([labels['sparse{}'.format(i+1)] for i in range(5)], axis=3)
+  sparse_inputs = slice_concat([labels['sparse3'] for i in range(5)], axis=3)
+  with tf.variable_scope('full'):
+    full_predictions = fbp_subnet(full_inputs)
+  with tf.variable_scope('sparse'):
+    sparse_predictions = fbp_subnet(sparse_inputs)
+  return tf.estimator.EstimatorSpec(mode=mode,
+                                    predictions=None,
+                                    loss=tf.constant(0),
+                                    train_op=tf.assign_add(tf.train.get_or_create_global_step(), 1),
+                                    eval_metric_ops={'rmse_full': rmse(full_predictions, labels['image'], 'full'),
+                                                     'rmse_sparse': rmse(sparse_predictions, labels['image'], 'sparse')})
 
 
 def model_fn(features, labels, mode, params):
@@ -104,6 +132,8 @@ def model_fn(features, labels, mode, params):
 
 
 def main(unused):
+  main_test(None)
+  return None
   os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.gpus
   training_steps_per_epoch = info.NUM_TRAIN // FLAGS.batch_size
   maximum_training_steps = (info.NUM_TRAIN // 1) * 2 + training_steps_per_epoch * FLAGS.num_epochs
@@ -126,6 +156,23 @@ def main(unused):
     eval_results = estimator.evaluate(input_fn=lambda: input_fn(False, FLAGS.batch_size, 1))
     print(eval_results)
 
+
+def main_test(_):
+  os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.gpus
+  FLAGS.stage = '_EVAL'
+  model_dir = os.path.join(FLAGS.model_dir, 'stage{}'.format(FLAGS.stage))
+  config = tf.estimator.RunConfig().replace(save_checkpoints_secs=1e9,
+                                            save_summary_steps=100,
+                                            keep_checkpoint_max=1)
+  estimator = tf.estimator.Estimator(model_fn=fbp_model_fn,
+                                     model_dir=model_dir,
+                                     config=config,
+                                     params={})
+  estimator.train(input_fn=lambda: input_fn(True, FLAGS.batch_size, FLAGS.epochs_per_val),
+                  hooks=[],
+                  max_steps=1)
+  eval_results = estimator.evaluate(input_fn=lambda: input_fn(False, FLAGS.batch_size, 1))
+  print(eval_results)
 
 if __name__ == '__main__':
   tf.logging.set_verbosity(tf.logging.INFO)

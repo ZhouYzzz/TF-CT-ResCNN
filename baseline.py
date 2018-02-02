@@ -39,7 +39,7 @@ def create_rrmse_metric(source, target):
 
 
 def shared_model(features, labels, mode, params):
-  assert mode is tf.estimator.ModeKeys.TRAIN
+  # assert mode is tf.estimator.ModeKeys.TRAIN
 
   inputs = slice_concat([labels['sparse{}'.format(i+1)] for i in range(5)], axis=3)
   outputs = fbp_subnet(inputs)
@@ -49,7 +49,7 @@ def shared_model(features, labels, mode, params):
   rrmse_metric_op = create_rrmse_metric(outputs, images)
   return tf.estimator.EstimatorSpec(mode=mode,
                                     predictions=outputs,
-                                    loss=None,
+                                    loss=tf.constant(0),
                                     train_op=train_op,
                                     eval_metric_ops={'rrmse': rrmse_metric_op})
 
@@ -71,6 +71,8 @@ def main(_):
   estimator = tf.estimator.Estimator(model_fn=shared_model,
                                      model_dir=FLAGS.model_dir)
   estimator.train(input_fn=lambda : eval_input_fn(batch_size=1), hooks=None, max_steps=1)
+  eval_results = estimator.evaluate(input_fn=lambda : eval_input_fn(batch_size=10))
+  print(eval_results)
 
 
 if __name__ == '__main__':

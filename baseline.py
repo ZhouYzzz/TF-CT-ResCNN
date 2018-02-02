@@ -38,7 +38,7 @@ def create_rrmse_metric(source, target):
   return tf.metrics.mean(rrmse)
 
 
-def shared_model(features, labels, mode, params):
+def shared_model(features, labels, mode):
   assert mode is tf.estimator.ModeKeys.TRAIN
 
   inputs = slice_concat([labels['sparse{}'.format(i+1)] for i in range(5)], axis=3)
@@ -54,14 +54,14 @@ def shared_model(features, labels, mode, params):
                                     eval_metric_ops={'rrmse': rrmse_metric_op})
 
 
-def ground_truth_model(features, labels, mode, params):
+def ground_truth_model(features, labels, mode):
   assert mode is tf.estimator.ModeKeys.EVAL
 
   inputs = slice_concat([labels['sparse{}'.format(i+1)] for i in range(5)], axis=3)
   outputs = fbp_subnet(inputs)
   images = labels['image']
 
-  tf.train.init_from_checkpoint(FLAGS.model_dir, assignment_map={'': ''})
+  tf.train.init_from_checkpoint(FLAGS.model_dir, assignment_map={})
 
   rrmse_metric_op = create_rrmse_metric(outputs, images)
   return tf.estimator.EstimatorSpec(mode=mode,
@@ -71,14 +71,14 @@ def ground_truth_model(features, labels, mode, params):
                                     eval_metric_ops={'rrmse': rrmse_metric_op})
 
 
-def sparse_model(features, labels, mode, params):
+def sparse_model(features, labels, mode):
   assert mode is tf.estimator.ModeKeys.EVAL
 
   inputs = slice_concat([labels['sparse3'] for i in range(5)], axis=3)
   outputs = fbp_subnet(inputs)
   images = labels['image']
 
-  tf.train.init_from_checkpoint(FLAGS.model_dir, assignment_map={'': ''})
+  tf.train.init_from_checkpoint(FLAGS.model_dir, assignment_map={})
 
   rrmse_metric_op = create_rrmse_metric(outputs, images)
   return tf.estimator.EstimatorSpec(mode=mode,
@@ -88,9 +88,8 @@ def sparse_model(features, labels, mode, params):
                                     eval_metric_ops={'rrmse': rrmse_metric_op})
 
 
-def linear_interpolation_model(features, labels, mode, params):
-  pass
-
+def linear_interpolation_model(features, labels, mode):
+  raise NotImplemented
 
 def main(_):
   estimator = tf.estimator.Estimator(model_fn=shared_model,
@@ -98,15 +97,15 @@ def main(_):
   estimator.train(input_fn=lambda : eval_input_fn(batch_size=1), hooks=None, max_steps=1)
 
   estimator = tf.estimator.Estimator(model_fn=ground_truth_model,
-                                     model_dir=os.path.join(FLAGS.model_dir, 'groundtruth'))
+                                     model_dir=FLAGS.model_dir)
   eval_results = estimator.evaluate(input_fn=lambda : eval_input_fn(batch_size=10))
   print(eval_results)
   estimator = tf.estimator.Estimator(model_fn=sparse_model,
-                                     model_dir=os.path.join(FLAGS.model_dir, 'sparse'))
+                                     model_dir=FLAGS.model_dir)
   eval_results = estimator.evaluate(input_fn=lambda: eval_input_fn(batch_size=10))
   print(eval_results)
 
 
 if __name__ == '__main__':
-  tf.logging.set_verbosity(tf.logging.INFO)
+  # tf.logging.set_verbosity(tf.logging.INFO)
   tf.app.run()

@@ -3,6 +3,7 @@
 import tensorflow as tf
 import os
 from train import input_fn
+import logging
 
 tf.flags.DEFINE_integer('stage', 0, '')
 
@@ -24,7 +25,7 @@ FLAGS = tf.flags.FLAGS
 
 
 def model_fn(features, labels, mode, params):
-  return tf.estimator.EstimatorSpec()
+  return None
 
 def main(_):
   os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.gpus
@@ -37,8 +38,9 @@ def main(_):
                                      params={})
   estimator.train(input_fn=lambda: input_fn(False, FLAGS.batch_size, 1), max_steps=1)
   eval_results = estimator.evaluate(input_fn=lambda: input_fn(False, FLAGS.batch_size, 1))
-  print eval_results
+  logging.info(eval_results)
 
 if __name__ == '__main__':
+  logging.basicConfig(level=logging.INFO)
   tf.logging.set_verbosity(tf.logging.INFO)
   tf.app.run()

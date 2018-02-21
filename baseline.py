@@ -74,7 +74,7 @@ def ground_truth_model(features, labels, mode):
 def sparse_model(features, labels, mode):
   assert mode is tf.estimator.ModeKeys.EVAL
 
-  inputs = slice_concat([labels['sparse3'] for i in range(5)], axis=3)
+  inputs = slice_concat([labels['sparse3'] for _ in range(5)], axis=3)
   outputs = fbp_subnet(inputs)
   images = labels['image']
 
@@ -89,7 +89,7 @@ def sparse_model(features, labels, mode):
 
 
 def linear_interpolation_model(features, labels, mode):
-  raise NotImplemented
+  raise NotImplementedError
 
 def main(_):
   estimator = tf.estimator.Estimator(model_fn=shared_model,

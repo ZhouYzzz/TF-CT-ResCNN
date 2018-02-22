@@ -70,6 +70,26 @@ def groundtruth_model(features, labels, mode):
                                     train_op=train_op,
                                     eval_metric_ops={'rrmse': rrmse_metric_op})
 
+def sparse_only_model(features, labels, mode):
+  """
+  Define the sparse only model spec, i.e. reconstructing using FBP on sparse views (repeated)
+  :param features:
+  :param labels:
+  :param mode:
+  :return:
+  """
+  inputs = slice_concat([features['inputs'] for _ in range(5)], axis=3)
+  outputs = fbp_subnet(inputs)
+  labels = labels['image']
+
+  loss = tf.reduce_mean(tf.nn.l2_loss(outputs - labels) / (info.PRJ_DEPTH * info.PRJ_HEIGHT * info.PRJ_WIDTH))
+  train_op = tf.assign_add(tf.train.get_or_create_global_step(), 1) if mode == tf.estimator.ModeKeys.TRAIN else None
+  rrmse_metric_op = create_rrmse_metric(outputs, labels)
+  return tf.estimator.EstimatorSpec(mode=mode,
+                                    predictions=outputs,
+                                    loss=loss,
+                                    train_op=train_op,
+                                    eval_metric_ops={'rrmse': rrmse_metric_op})
 
 def shared_model(features, labels, mode):
   assert mode is tf.estimator.ModeKeys.TRAIN
@@ -144,7 +164,13 @@ def main(_):
   estimator = tf.estimator.Estimator(model_fn=groundtruth_model,
                                      model_dir=FLAGS.model_dir,
                                      config=config)
-  estimator.train(input_fn=lambda: train_input_fn(FLAGS.batch_size))
+  estimator.train(input_fn=lambda: train_input_fn(FLAGS.batch_size), max_steps=1000)
+  eval_results = estimator.evaluate(input_fn=lambda: eval_input_fn(FLAGS.batch_size))
+  print(eval_results)
+
+  estimator = tf.estimator.Estimator(model_fn=sparse_only_model,
+                                     model_dir=FLAGS.model_dir,
+                                     config=config)
   eval_results = estimator.evaluate(input_fn=lambda: eval_input_fn(FLAGS.batch_size))
   print(eval_results)
 

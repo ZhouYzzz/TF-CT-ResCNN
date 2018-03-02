@@ -7,7 +7,7 @@ from baseline import create_rrmse_metric, train_input_fn, eval_input_fn
 import dataset.info as info
 import os
 
-tf.flags.DEFINE_string('model_dir', '/tmp/prj', '')
+# tf.flags.DEFINE_string('model_dir', '/tmp/prj', '')
 
 tf.flags.DEFINE_string('gpus', '0', '')
 tf.flags.DEFINE_float('learning_rate', 0.01, '')

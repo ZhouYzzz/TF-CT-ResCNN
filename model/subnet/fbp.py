@@ -10,20 +10,22 @@ tf.flags.DEFINE_string('_system_dir', './model/subnet/', '')
 FLAGS = tf.flags.FLAGS
 
 
+
+
 def _load_weights():
   with tf.variable_scope('load_weights'):
-    W = tf.decode_raw(tf.read_file('W.bin'), tf.float64)
+    W = tf.decode_raw(tf.read_file(os.path.join(os.path.dirname(__file__), 'W.bin')), tf.float64)
     W = tf.cast(W, tf.float32)
     W = tf.reshape(W, shape=(info.PRJ_WIDTH, info.PRJ_HEIGHT))
     W = tf.transpose(W)
-    F = tf.decode_raw(tf.read_file('F.bin'), tf.float64)
+    F = tf.decode_raw(tf.read_file(os.path.join(os.path.dirname(__file__), 'F.bin')), tf.float64)
     F = tf.cast(F, tf.float32)
     F = tf.reshape(F, shape=(info.PRJ_HEIGHT, info.PRJ_HEIGHT))
     F = tf.transpose(F)
-    Hi = tf.decode_raw(tf.read_file('H_indices.bin'), tf.int64)
+    Hi = tf.decode_raw(tf.read_file(os.path.join(os.path.dirname(__file__), 'H_indices.bin')), tf.int64)
     Hi = tf.reshape(Hi, shape=(22628160,2))
     #Hi = tf.reshape(Hi, [-1])
-    Hv = tf.decode_raw(tf.read_file('H_values.bin'), tf.float64)
+    Hv = tf.decode_raw(tf.read_file(os.path.join(os.path.dirname(__file__), 'H_values.bin')), tf.float64)
     Hv = tf.cast(Hv, tf.float32)
     Hv = tf.reshape(Hv, shape=(22628160,1))
     Hv = tf.reshape(Hv, [-1])

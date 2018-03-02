@@ -65,7 +65,7 @@ def model_fn(features, labels, mode):
 
 def main(_):
   os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.gpus
-  config = tf.estimator.RunConfig(),replace(save_checkpoints_secs=1e9,
+  config = tf.estimator.RunConfig().replace(save_checkpoints_secs=1e9,
                                             keep_checkpoint_max=1)
   tensors_to_log = ['loss', 'rrmse_metric']
   logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=100)

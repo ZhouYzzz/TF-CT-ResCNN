@@ -40,12 +40,14 @@ def branch_network_v0(inputs, index, is_training):
 
 
 def model_fn(features, labels, mode):
-  inputs = features
+  inputs = features['inputs']
   branch_outputs = [branch_network_v0(inputs, i, is_training=True) for i in range(1)]
-  projection_outputs = slice_concat(branch_outputs, axis=3)
-  projection_labels = slice_concat([labels['sparse{}'.format(i+1)] for i in range(1)], axis=3)
+  # projection_outputs = slice_concat(branch_outputs, axis=3)
+  # projection_labels = slice_concat([labels['sparse{}'.format(i+1)] for i in range(1)], axis=3)
+  projection_outputs = branch_outputs[0]
+  projection_labels = labels['sparse1']
 
-  loss = tf.nn.l2_loss(projection_labels - projection_outputs) / (FLAGS.batch_size * 1 * info.PRJ_WIDTH * info.PRJ_HEIGHT)
+  loss = tf.nn.l2_loss(projection_labels - projection_outputs) / (FLAGS.batch_size * 1 * info.PRJ_SPARSE_WIDTH * info.PRJ_HEIGHT)
   loss = tf.identity(loss, 'loss')
 
   rrmse_metric = create_rrmse_metric(projection_outputs, projection_labels)

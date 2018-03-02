@@ -30,6 +30,7 @@ def train_input_fn(batch_size):
   labels = features
   return {'inputs': features['sparse3']}, labels
 
+
 def eval_input_fn(batch_size):
   dataset = tf.data.TFRecordDataset(os.path.join(FLAGS.data_dir, 'val.tfrecords'))
   dataset = dataset.map(lambda s: tf.parse_single_example(s, features=train_example_spec()))
@@ -70,6 +71,7 @@ def groundtruth_model(features, labels, mode):
                                     train_op=train_op,
                                     eval_metric_ops={'rrmse': rrmse_metric_op})
 
+
 def sparse_only_model(features, labels, mode):
   """
   Define the sparse only model spec, i.e. reconstructing using FBP on sparse views (repeated)
@@ -91,58 +93,59 @@ def sparse_only_model(features, labels, mode):
                                     train_op=train_op,
                                     eval_metric_ops={'rrmse': rrmse_metric_op})
 
-def shared_model(features, labels, mode):
-  assert mode is tf.estimator.ModeKeys.TRAIN
 
-  inputs = slice_concat([labels['sparse{}'.format(i+1)] for i in range(5)], axis=3)
-  outputs = fbp_subnet(inputs)
-  images = labels['image']
-
-  train_op = tf.assign_add(tf.train.get_or_create_global_step(), 1)
-  rrmse_metric_op = create_rrmse_metric(outputs, images)
-  return tf.estimator.EstimatorSpec(mode=mode,
-                                    predictions=outputs,
-                                    loss=tf.constant(0),
-                                    train_op=train_op,
-                                    eval_metric_ops={'rrmse': rrmse_metric_op})
-
-
-def ground_truth_model(features, labels, mode):
-  assert mode is tf.estimator.ModeKeys.EVAL
-
-  inputs = slice_concat([labels['sparse{}'.format(i+1)] for i in range(5)], axis=3)
-  outputs = fbp_subnet(inputs)
-  images = labels['image']
-
-  tf.train.init_from_checkpoint(FLAGS.model_dir, assignment_map={})
-
-  rrmse_metric_op = create_rrmse_metric(outputs, images)
-  return tf.estimator.EstimatorSpec(mode=mode,
-                                    predictions=outputs,
-                                    loss=tf.constant(0),
-                                    train_op=None,
-                                    eval_metric_ops={'rrmse': rrmse_metric_op})
-
-
-def sparse_model(features, labels, mode):
-  assert mode is tf.estimator.ModeKeys.EVAL
-
-  inputs = slice_concat([labels['sparse3'] for _ in range(5)], axis=3)
-  outputs = fbp_subnet(inputs)
-  images = labels['image']
-
-  tf.train.init_from_checkpoint(FLAGS.model_dir, assignment_map={})
-
-  rrmse_metric_op = create_rrmse_metric(outputs, images)
-  return tf.estimator.EstimatorSpec(mode=mode,
-                                    predictions=outputs,
-                                    loss=tf.constant(0),
-                                    train_op=None,
-                                    eval_metric_ops={'rrmse': rrmse_metric_op})
-
-
-def linear_interpolation_model(features, labels, mode):
-  raise NotImplementedError
+# def shared_model(features, labels, mode):
+#   assert mode is tf.estimator.ModeKeys.TRAIN
+#
+#   inputs = slice_concat([labels['sparse{}'.format(i+1)] for i in range(5)], axis=3)
+#   outputs = fbp_subnet(inputs)
+#   images = labels['image']
+#
+#   train_op = tf.assign_add(tf.train.get_or_create_global_step(), 1)
+#   rrmse_metric_op = create_rrmse_metric(outputs, images)
+#   return tf.estimator.EstimatorSpec(mode=mode,
+#                                     predictions=outputs,
+#                                     loss=tf.constant(0),
+#                                     train_op=train_op,
+#                                     eval_metric_ops={'rrmse': rrmse_metric_op})
+#
+#
+# def ground_truth_model(features, labels, mode):
+#   assert mode is tf.estimator.ModeKeys.EVAL
+#
+#   inputs = slice_concat([labels['sparse{}'.format(i+1)] for i in range(5)], axis=3)
+#   outputs = fbp_subnet(inputs)
+#   images = labels['image']
+#
+#   tf.train.init_from_checkpoint(FLAGS.model_dir, assignment_map={})
+#
+#   rrmse_metric_op = create_rrmse_metric(outputs, images)
+#   return tf.estimator.EstimatorSpec(mode=mode,
+#                                     predictions=outputs,
+#                                     loss=tf.constant(0),
+#                                     train_op=None,
+#                                     eval_metric_ops={'rrmse': rrmse_metric_op})
+#
+#
+# def sparse_model(features, labels, mode):
+#   assert mode is tf.estimator.ModeKeys.EVAL
+#
+#   inputs = slice_concat([labels['sparse3'] for _ in range(5)], axis=3)
+#   outputs = fbp_subnet(inputs)
+#   images = labels['image']
+#
+#   tf.train.init_from_checkpoint(FLAGS.model_dir, assignment_map={})
+#
+#   rrmse_metric_op = create_rrmse_metric(outputs, images)
+#   return tf.estimator.EstimatorSpec(mode=mode,
+#                                     predictions=outputs,
+#                                     loss=tf.constant(0),
+#                                     train_op=None,
+#                                     eval_metric_ops={'rrmse': rrmse_metric_op})
+#
+#
+# def linear_interpolation_model(features, labels, mode):
+#   raise NotImplementedError
 
 
 def main(_):
@@ -173,6 +176,7 @@ def main(_):
                                      config=config)
   eval_results = estimator.evaluate(input_fn=lambda: eval_input_fn(FLAGS.batch_size))
   print(eval_results)
+  tf.sparse_tensor_dense_matmul()
 
 
 

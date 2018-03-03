@@ -21,7 +21,7 @@ FLAGS = tf.flags.FLAGS
 
 def train_input_fn(batch_size, epochs=None):
   dataset = tf.data.TFRecordDataset(glob.glob(os.path.join(FLAGS.data_dir, 'train*.tfrecords')))
-  dataset.repeat(epochs)
+  dataset = dataset.repeat(epochs)
   dataset = dataset.map(lambda s: tf.parse_single_example(s, features=train_example_spec()))
   dataset = dataset.prefetch(batch_size)
   dataset = dataset.batch(batch_size)

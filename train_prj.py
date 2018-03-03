@@ -53,8 +53,10 @@ def model_fn(features, labels, mode):
   rrmse_metric = create_rrmse_metric(projection_outputs, projection_labels)
 
   if mode == tf.estimator.ModeKeys.TRAIN:
-    optimizer = tf.train.MomentumOptimizer(learning_rate=FLAGS.learning_rate, momentum=FLAGS.momentum)
-    train_op = optimizer.minimize(loss)
+    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+    with tf.control_dependencies(update_ops):
+      optimizer = tf.train.MomentumOptimizer(learning_rate=FLAGS.learning_rate, momentum=FLAGS.momentum)
+      train_op = optimizer.minimize(loss, global_step=tf.train.get_or_create_global_step())
   else:
     train_op = None
 
@@ -69,12 +71,13 @@ def main(_):
   os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.gpus
   config = tf.estimator.RunConfig().replace(save_checkpoints_secs=1e9,
                                             keep_checkpoint_max=1)
-  tensors_to_log = ['loss', 'rrmse_metric']
+  tensors_to_log = ['loss']
   logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=100)
   estimator = tf.estimator.Estimator(model_fn, model_dir=FLAGS.model_dir, config=config)
-  estimator.train(lambda: train_input_fn(FLAGS.batch_size), hooks={logging_hook})
+  estimator.train(lambda: train_input_fn(FLAGS.batch_size), hooks={logging_hook}, max_steps=10000)
   print(estimator.evaluate(lambda: eval_input_fn(FLAGS.batch_size)))
 
 
 if __name__ == '__main__':
+  tf.logging.set_verbosity(tf.logging.INFO)
   tf.app.run()

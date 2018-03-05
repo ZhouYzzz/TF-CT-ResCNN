@@ -43,6 +43,36 @@ def branch_network_v0(inputs, index, is_training):
   return inputs
 
 
+def branch_network_v1(inputs, index, is_training):
+  with tf.name_scope('B{}'.format(index)):
+    inputs = conv2d_periodic_padding(inputs, filters=64, kernel_size=(9, 3), strides=(1, 1))
+    inputs = batch_norm_relu(inputs, is_training)
+    shortcut_0 = inputs
+    inputs = conv2d_periodic_padding(inputs, filters=128, kernel_size=(9, 3), strides=(2, 2))
+    inputs = batch_norm_relu(inputs, is_training)
+    shortcut_1 = inputs
+    inputs = conv2d_periodic_padding(inputs, filters=256, kernel_size=(9, 3), strides=(2, 2))
+    inputs = batch_norm_relu(inputs, is_training)
+    shortcut_2 = inputs
+    inputs = conv2d_periodic_padding(inputs, filters=512, kernel_size=(9, 3), strides=(1, 1))
+    inputs = batch_norm_relu(inputs, is_training)
+
+    inputs = conv2d_periodic_padding(inputs, filters=512, kernel_size=(9, 3), strides=(1, 1))  # 1/8
+    inputs = batch_norm_relu(inputs, is_training)
+    inputs = conv2d_periodic_padding(inputs, filters=256, kernel_size=(9, 3), strides=(2, 2), transpose=True, padding=False)  # 1/4
+    inputs = batch_norm_relu(inputs, is_training)
+    inputs += shortcut_2
+    inputs = conv2d_periodic_padding(inputs, filters=128, kernel_size=(9, 3), strides=(2, 2), transpose=True, padding=False)  # 1/2
+    inputs = batch_norm_relu(inputs, is_training)
+    inputs += shortcut_1
+    inputs = conv2d_periodic_padding(inputs, filters=64, kernel_size=(9, 3), strides=(2, 2), transpose=True, padding=False)  # 1/1
+    inputs = batch_norm_relu(inputs, is_training)
+    inputs += shortcut_0
+    inputs = conv2d_periodic_padding(inputs, filters=1, kernel_size=(9, 3), strides=(1, 1))  # 1/1
+    inputs = tf.identity(inputs, 'outputs')
+  return inputs
+
+
 def l2_loss(source, target):
   source = tf.layers.flatten(source)
   target = tf.layers.flatten(target)

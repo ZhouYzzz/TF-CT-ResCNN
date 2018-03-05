@@ -51,14 +51,16 @@ def model_fn(features, labels, mode):
   projection_outputs = branch_outputs[0]
   projection_labels = labels['sparse1']
 
-  loss = tf.nn.l2_loss(projection_labels - projection_outputs) / (FLAGS.batch_size * 1 * info.PRJ_SPARSE_WIDTH * info.PRJ_HEIGHT)
+  loss = tf.reduce_mean(
+    tf.nn.l2_loss(projection_labels - projection_outputs) / (info.PRJ_SPARSE_WIDTH * info.PRJ_HEIGHT))
   loss = tf.identity(loss, 'loss')
 
-  base_loss = tf.nn.l2_loss(inputs - projection_labels) / (FLAGS.batch_size * 1 * info.PRJ_SPARSE_WIDTH * info.PRJ_HEIGHT)
+  base_loss = tf.reduce_mean(
+    tf.nn.l2_loss(inputs - projection_labels) / (info.PRJ_SPARSE_WIDTH * info.PRJ_HEIGHT))
   base_loss = tf.identity(base_loss, 'base_loss')
 
   rrmse_metric = create_rrmse_metric(projection_outputs, projection_labels)
-  tf.identity(rrmse_metric[0], 'rrmse')
+  tf.identity(rrmse_metric[1], 'rrmse')
 
   if mode == tf.estimator.ModeKeys.TRAIN:
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
@@ -81,11 +83,11 @@ def main(_):
                                             keep_checkpoint_max=1)
   tensors_to_log = ['loss', 'base_loss', 'rrmse']
   logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=100)
-  estimator = tf.estimator.Estimator(model_fn, model_dir=FLAGS.model_dir, config=config)
-  # estimator.train(lambda: train_input_fn(FLAGS.batch_size), hooks={logging_hook}, max_steps=10000)
-  # print(estimator.evaluate(lambda: eval_input_fn(FLAGS.batch_size)))
+  # estimator = tf.estimator.Estimator(model_fn, model_dir=FLAGS.model_dir, config=config)
+  estimator = tf.estimator.Estimator(model_fn, model_dir=None, config=config)
 
-  estimator.train(lambda: input_fn('train', batch_size=FLAGS.batch_size, num_epochs=1), hooks=[logging_hook], max_steps=(20000 // FLAGS.batch_size))
+  estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1), hooks=[logging_hook])
+  estimator.train(lambda: input_fn('train', batch_size=FLAGS.batch_size, num_epochs=1), hooks=[logging_hook])
   print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
 
 if __name__ == '__main__':

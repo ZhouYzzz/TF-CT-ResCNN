@@ -5,7 +5,7 @@ import tensorflow as tf
 from model.subnet.prj_est_impl import conv2d_periodic_padding, batch_norm_relu, slice_concat
 from dataset import input_fn
 from utils import create_rrmse_metric
-import dataset.info as info
+import dataset
 import os
 
 tf.flags.DEFINE_string('model_dir', '/tmp/train_prj', '')
@@ -43,6 +43,14 @@ def branch_network_v0(inputs, index, is_training):
   return inputs
 
 
+def l2_loss(source, target):
+  source = tf.layers.flatten(source)
+  target = tf.layers.flatten(target)
+  loss = tf.norm(source - target, axis=1)
+  loss = tf.reduce_mean(loss)
+  return loss
+
+
 def model_fn(features, labels, mode):
   inputs = features['inputs']
   branch_outputs = [branch_network_v0(inputs, i, is_training=True) for i in range(1)]
@@ -51,10 +59,11 @@ def model_fn(features, labels, mode):
   projection_outputs = branch_outputs[0]
   projection_labels = labels['sparse1']
 
-  loss = tf.nn.l2_loss(projection_labels - projection_outputs) / (FLAGS.batch_size * 1 * info.PRJ_SPARSE_WIDTH * info.PRJ_HEIGHT)
+  # loss = tf.nn.l2_loss(projection_labels - projection_outputs) / (FLAGS.batch_size * 1 * dataset.INFO.PRJ_SPARSE_WIDTH * dataset.INFO.PRJ_HEIGHT)
+  loss = l2_loss(projection_outputs, projection_labels)
   loss = tf.identity(loss, 'loss')
-
-  base_loss = tf.nn.l2_loss(inputs - projection_labels) / (FLAGS.batch_size * 1 * info.PRJ_SPARSE_WIDTH * info.PRJ_HEIGHT)
+  # base_loss = tf.nn.l2_loss(inputs - projection_labels) / (FLAGS.batch_size * 1 * dataset.INFO.PRJ_SPARSE_WIDTH * dataset.INFO.PRJ_HEIGHT)
+  base_loss = l2_loss(inputs, projection_labels)
   base_loss = tf.identity(base_loss, 'base_loss')
 
   rrmse_metric = create_rrmse_metric(projection_outputs, projection_labels)

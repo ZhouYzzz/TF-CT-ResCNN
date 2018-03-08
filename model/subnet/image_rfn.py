@@ -44,14 +44,16 @@ def conv2d_fixed_padding(inputs, filters, kernel_size, strides, transpose=False,
   """Strided 2-D convolution with explicit padding."""
   # The padding is consistent and is based only on `kernel_size`, not on the
   # dimensions of `inputs` (as opposed to using `tf.layers.conv2d` alone).
-  if ((strides > 1) and padding):
-    inputs = fixed_padding(inputs, kernel_size)
+  # if ((strides[0] > 1 or strides[1] > 1) and padding):
+  #   inputs = fixed_padding(inputs, kernel_size)
+  padding = False
   conv2d_fn = tf.layers.conv2d_transpose if transpose else tf.layers.conv2d
   inputs = conv2d_fn(
       inputs=inputs, filters=filters, kernel_size=kernel_size, strides=strides,
       padding=('VALID' if padding else 'SAME'), use_bias=False,
       kernel_initializer=tf.contrib.layers.xavier_initializer(),
       data_format='channels_first')
+  # print(inputs)
   return inputs
 
 
@@ -107,7 +109,7 @@ def image_ref_subnet_core_v1(inputs, is_training):
 # def image_rfn_subnet(inputs, is_training):
 #   return inputs
 def image_ref_subnet(inputs, is_training):
-  inputs = image_ref_subnet_core_v1(inputs, is_training)
+  inputs = image_ref_subnet_core_v0(inputs, is_training)
   inputs = tf.identity(inputs, 'outputs')
   return inputs
 

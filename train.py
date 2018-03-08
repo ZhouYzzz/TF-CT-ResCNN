@@ -174,6 +174,7 @@ def main_test(_):
   eval_results = estimator.evaluate(input_fn=lambda: input_fn(False, FLAGS.batch_size, 1))
   print(eval_results)
 
+
 if __name__ == '__main__':
   tf.logging.set_verbosity(tf.logging.INFO)
   tf.app.run()

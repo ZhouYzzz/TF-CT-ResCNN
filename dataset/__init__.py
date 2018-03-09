@@ -5,7 +5,7 @@ The `dataset` dir contains the train/val.tfrecords files, along with scripts
 """
 
 from dataset.example_spec import train_example_spec
-from dataset.input_fn import input_fn
+from dataset.input_fn import input_fn, duo_input_fn
 
 
 class INFO:
@@ -26,4 +26,4 @@ class INFO:
   IMG_DEPTH = 1
 
 
-__all__ = ['train_example_spec', 'input_fn', 'INFO']
+__all__ = ['train_example_spec', 'input_fn', 'duo_input_fn', 'INFO']

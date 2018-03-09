@@ -1,0 +1,3 @@
+[submodule "wgan"]
+	path = wgan
+	url = https://github.com/jiamings/wgan.git

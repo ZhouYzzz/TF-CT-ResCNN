@@ -133,7 +133,7 @@ def model_fn(features, labels, mode, params):
 
 def main(unused):
   main_test(None)
-  return None
+  # return None
   os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.gpus
   training_steps_per_epoch = info.NUM_TRAIN // FLAGS.batch_size
   maximum_training_steps = (info.NUM_TRAIN // 1) * 2 + training_steps_per_epoch * FLAGS.num_epochs

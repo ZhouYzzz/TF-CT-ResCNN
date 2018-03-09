@@ -89,20 +89,12 @@ def model_fn(features, labels, mode):
   projection_outputs = branch_outputs[0]
   projection_labels = labels['sparse1']
 
-<<<<<<< HEAD
   loss = tf.reduce_mean(
-    tf.nn.l2_loss(projection_labels - projection_outputs) / (info.PRJ_SPARSE_WIDTH * info.PRJ_HEIGHT))
+    tf.nn.l2_loss(projection_labels - projection_outputs) / (dataset.INFO.PRJ_SPARSE_WIDTH * dataset.INFO.PRJ_HEIGHT))
   loss = tf.identity(loss, 'loss')
 
   base_loss = tf.reduce_mean(
-    tf.nn.l2_loss(inputs - projection_labels) / (info.PRJ_SPARSE_WIDTH * info.PRJ_HEIGHT))
-=======
-  # loss = tf.nn.l2_loss(projection_labels - projection_outputs) / (FLAGS.batch_size * 1 * dataset.INFO.PRJ_SPARSE_WIDTH * dataset.INFO.PRJ_HEIGHT)
-  loss = l2_loss(projection_outputs, projection_labels)
-  loss = tf.identity(loss, 'loss')
-  # base_loss = tf.nn.l2_loss(inputs - projection_labels) / (FLAGS.batch_size * 1 * dataset.INFO.PRJ_SPARSE_WIDTH * dataset.INFO.PRJ_HEIGHT)
-  base_loss = l2_loss(inputs, projection_labels)
->>>>>>> 741ac73e5d7d1c62fcd4df669128e04af1b4a6d2
+    tf.nn.l2_loss(inputs - projection_labels) / (dataset.INFO.PRJ_SPARSE_WIDTH * dataset.INFO.PRJ_HEIGHT))
   base_loss = tf.identity(base_loss, 'base_loss')
 
   rrmse_metric = create_rrmse_metric(projection_outputs, projection_labels)

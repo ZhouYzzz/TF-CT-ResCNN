@@ -47,7 +47,8 @@ def red_cnn(inputs):
 
 def main():
   inputs = tf.zeros(shape=(1, 200, 200, 1))
-  inputs = red_cnn(inputs)
+  with tf.variable_scope('RED', reuse=tf.AUTO_REUSE):
+    inputs = red_cnn(inputs)
   print(inputs)
 
 

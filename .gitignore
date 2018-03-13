@@ -8,3 +8,5 @@ tmp/
 *.code-workspace
 .mypy_cache
 .vscode/
+timeline.json
+

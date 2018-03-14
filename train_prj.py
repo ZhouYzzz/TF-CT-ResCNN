@@ -139,32 +139,34 @@ def model_fn(features, labels, mode):
 
 def branch_network_v2(inputs):
   stddev = 0.001
+  kernel_size = (7, 7)
+  use_bias = False
   kernel_initializer = tf.contrib.layers.xavier_initializer()  # tf.random_normal_initializer(stddev=stddev)
   kernel_initializer = tf.random_normal_initializer(stddev=stddev)
-  inputs = tf.layers.conv2d(inputs, 64, (5, 5), padding='same', data_format='channels_first',
-                            kernel_initializer=kernel_initializer, use_bias=True)
+  inputs = tf.layers.conv2d(inputs, 64, kernel_size, padding='same', data_format='channels_first',
+                            kernel_initializer=kernel_initializer, use_bias=use_bias)
   inputs = tf.nn.leaky_relu(inputs)
-  inputs = tf.layers.conv2d(inputs, 64, (5, 5), padding='same', data_format='channels_first',
-                            kernel_initializer=kernel_initializer, use_bias=True)
-  inputs = tf.nn.leaky_relu(inputs)
-  sc0 = inputs
-  inputs = tf.layers.conv2d(inputs, 64, (5, 5), padding='same', data_format='channels_first',
-                            kernel_initializer=kernel_initializer, use_bias=True)
-  inputs = tf.nn.leaky_relu(inputs)
-  inputs += sc0
-  inputs = tf.layers.conv2d(inputs, 64, (5, 5), padding='same', data_format='channels_first',
-                            kernel_initializer=kernel_initializer, use_bias=True)
+  inputs = tf.layers.conv2d(inputs, 64, kernel_size, padding='same', data_format='channels_first',
+                            kernel_initializer=kernel_initializer, use_bias=use_bias)
   inputs = tf.nn.leaky_relu(inputs)
   sc0 = inputs
-  inputs = tf.layers.conv2d(inputs, 64, (5, 5), padding='same', data_format='channels_first',
-                            kernel_initializer=kernel_initializer, use_bias=True)
+  inputs = tf.layers.conv2d(inputs, 64, kernel_size, padding='same', data_format='channels_first',
+                            kernel_initializer=kernel_initializer, use_bias=use_bias)
   inputs = tf.nn.leaky_relu(inputs)
   inputs += sc0
-  inputs = tf.layers.conv2d(inputs, 16, (5, 5), padding='same', data_format='channels_first',
-                            kernel_initializer=kernel_initializer, use_bias=True)
+  inputs = tf.layers.conv2d(inputs, 64, kernel_size, padding='same', data_format='channels_first',
+                            kernel_initializer=kernel_initializer, use_bias=use_bias)
   inputs = tf.nn.leaky_relu(inputs)
-  inputs = tf.layers.conv2d(inputs, 1, (5, 5), padding='same', data_format='channels_first',
-                            kernel_initializer=kernel_initializer, use_bias=True)
+  sc0 = inputs
+  inputs = tf.layers.conv2d(inputs, 64, kernel_size, padding='same', data_format='channels_first',
+                            kernel_initializer=kernel_initializer, use_bias=use_bias)
+  inputs = tf.nn.leaky_relu(inputs)
+  inputs += sc0
+  inputs = tf.layers.conv2d(inputs, 16, kernel_size, padding='same', data_format='channels_first',
+                            kernel_initializer=kernel_initializer, use_bias=use_bias)
+  inputs = tf.nn.leaky_relu(inputs)
+  inputs = tf.layers.conv2d(inputs, 1, kernel_size, padding='same', data_format='channels_first',
+                            kernel_initializer=kernel_initializer, use_bias=use_bias)
   inputs = tf.nn.leaky_relu(inputs)
   inputs = tf.identity(inputs, 'outputs')
   return inputs

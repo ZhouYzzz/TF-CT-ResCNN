@@ -9,4 +9,8 @@ tmp/
 .mypy_cache
 .vscode/
 timeline.json
+<<<<<<< HEAD
 tmp*/
+=======
+matlab/
+>>>>>>> d27b03d7864167bff1eef4295cd85119cb7cd138

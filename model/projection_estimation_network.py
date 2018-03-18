@@ -32,7 +32,7 @@ def batch_norm_relu(inputs, training, data_format='channels_first'):
       momentum=_BATCH_NORM_DECAY, epsilon=_BATCH_NORM_EPSILON, center=True,
       scale=True, training=training, fused=True)
   # inputs = tf.nn.relu(inputs)
-  inputs = tf.nn.leaky_relu(inputs, alpha=0.1) # use leaky relu instead
+  inputs = tf.nn.leaky_relu(inputs, alpha=0.1)  # use leaky relu instead
   return inputs
 
 
@@ -81,7 +81,8 @@ def model(inputs, training, **conv_args):
   inputs = batch_norm_relu(inputs, training)
   inputs = tf.identity(inputs, 'relu7')
   inputs += shortcut_0
-  pass
+  inputs = tf.identity(inputs, 'outputs')
+  return inputs
 
 
 def projection_estimation_network(inputs, training):

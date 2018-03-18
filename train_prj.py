@@ -12,6 +12,8 @@ from model.red_cnn import red_cnn
 from utils.summary import visualize
 from model.subnet.fbp import fbp_subnet
 
+from model.projection_estimation_network import projection_estimation_network
+
 
 tf.flags.DEFINE_string('model_dir', '/tmp/train_prj', '')
 tf.flags.DEFINE_integer('batch_size', 10, '')
@@ -19,7 +21,7 @@ tf.flags.DEFINE_integer('batch_size', 10, '')
 tf.flags.DEFINE_string('gpus', '0', '')
 
 # LEARNING POLICY
-tf.flags.DEFINE_float('learning_rate', 1e-3, '')
+tf.flags.DEFINE_float('learning_rate', 1e-4, '')
 tf.flags.DEFINE_float('momentum', 0.9, '')
 tf.flags.DEFINE_float('weight_decay', 2e-4, '')
 FLAGS = tf.flags.FLAGS
@@ -189,7 +191,16 @@ def prj_model_fn(features, labels, mode):
   inputs = features['inputs']
   sparse_outputs = slice_concat([inputs for _ in range(5)], axis=3)
   # prj_outputs = branch_network_v2(inputs)
-  prj_outputs = prj_est_network_v2(inputs)
+  # prj_outputs = prj_est_network_v2(inputs)
+
+  branch_outputs = list()
+  for i in range(5):
+    with tf.variable_scope('Branch{}'.format(i)):
+      outputs = projection_estimation_network(inputs, training=(mode == tf.estimator.ModeKeys.TRAIN))
+      branch_outputs.append(outputs)
+  outputs = slice_concat(branch_outputs, axis=3)
+  prj_outputs = outputs
+
   prj_labels = slice_concat([labels['sparse{}'.format(i+1)] for i in range(5)], axis=3)
 
   loss = tf.reduce_mean(tf.map_fn(tf.nn.l2_loss, (prj_outputs - prj_labels)))
@@ -214,9 +225,9 @@ def prj_model_fn(features, labels, mode):
   tf.summary.scalar('base_rrmse', base_rrmse_metric[1])
 
   # continue training test
-  # tf.train.init_from_checkpoint('tmp65twq2zp', assignment_map={'/': '/'})
+  tf.train.init_from_checkpoint('tmp65twq2zp', assignment_map={'/': '/'})
 
-  tf.train.init_from_checkpoint('tmp0y9rl6et', assignment_map={'/': '/'})
+  # tf.train.init_from_checkpoint('tmp0y9rl6et', assignment_map={'/': '/'})
   # tf.train.init_from_checkpoint('/tmp/tmpvm8qg4ro', assignment_map={'FBP/': 'FBP/'})
 
 
@@ -231,8 +242,8 @@ def prj_model_fn(features, labels, mode):
   if mode == tf.estimator.ModeKeys.TRAIN:
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops):
-      # optimizer = tf.train.MomentumOptimizer(learning_rate=1e-3, momentum=FLAGS.momentum)
-      optimizer = tf.train.AdamOptimizer(learning_rate=1e-4)  # FLAGS.learning_rate)
+      #optimizer = tf.train.MomentumOptimizer(learning_rate=FLAGS.learning_rate, momentum=FLAGS.momentum)
+      optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate)  # FLAGS.learning_rate)
       grads_and_vars = optimizer.compute_gradients(loss)
       clipped_grads_and_vars = [(tf.clip_by_norm(grad, 1e-4), var)
                                 for grad, var in grads_and_vars if grad is not None]
@@ -271,8 +282,8 @@ def branch_model_fn(features, labels, mode):
   if mode == tf.estimator.ModeKeys.TRAIN:
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops):
-      # optimizer = tf.train.MomentumOptimizer(learning_rate=FLAGS.learning_rate, momentum=FLAGS.momentum)
-      optimizer = tf.train.AdamOptimizer(learning_rate=1e-4)#FLAGS.learning_rate)
+      optimizer = tf.train.MomentumOptimizer(learning_rate=FLAGS.learning_rate, momentum=FLAGS.momentum)
+      #optimizer = tf.train.AdamOptimizer(learning_rate=1e-4)#FLAGS.learning_rate)
       grads_and_vars = optimizer.compute_gradients(loss)
       clipped_grads_and_vars = [(tf.clip_by_norm(grad, 1e-4), var)
                                 for grad, var in grads_and_vars if grad is not None]
@@ -292,7 +303,7 @@ def main(_):
   os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.gpus
   config = tf.estimator.RunConfig().replace(save_checkpoints_secs=1e9,
                                             keep_checkpoint_max=1)
-  tensors_to_log = ['prj_loss', 'total_loss', 'rrmse', 'base_rrmse', 'base_loss', 'Adam/learning_rate']
+  tensors_to_log = ['prj_loss', 'total_loss', 'rrmse', 'base_rrmse', 'base_loss']#, 'Adam/learning_rate']
   # tensors_to_log = []
   logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=100)
   # estimator = tf.estimator.Estimator(model_fn, model_dir=FLAGS.model_dir, config=config)
@@ -300,10 +311,10 @@ def main(_):
   estimator = tf.estimator.Estimator(prj_model_fn, model_dir=None, config=config)
 
   ## TRAIN
-  # estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1), hooks=[logging_hook], max_steps=2000)
-  # for _ in range(3):
-  #   estimator.train(lambda: input_fn('train', batch_size=FLAGS.batch_size, num_epochs=1), hooks=[logging_hook])
-  #   print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
+  estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1), hooks=[logging_hook], max_steps=2000)
+  for _ in range(10):
+    estimator.train(lambda: input_fn('train', batch_size=FLAGS.batch_size, num_epochs=1), hooks=[logging_hook])
+    print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
 
   # estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1), hooks=[logging_hook], steps=1)
   # print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))

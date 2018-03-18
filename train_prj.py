@@ -10,6 +10,8 @@ import dataset
 import os
 from model.red_cnn import red_cnn
 from utils.summary import visualize
+from model.subnet.fbp import fbp_subnet
+
 
 tf.flags.DEFINE_string('model_dir', '/tmp/train_prj', '')
 tf.flags.DEFINE_integer('batch_size', 10, '')
@@ -211,10 +213,25 @@ def prj_model_fn(features, labels, mode):
   tf.identity(base_rrmse_metric[1], 'base_rrmse')
   tf.summary.scalar('base_rrmse', base_rrmse_metric[1])
 
+  # continue training test
+  # tf.train.init_from_checkpoint('tmp65twq2zp', assignment_map={'/': '/'})
+
+  tf.train.init_from_checkpoint('tmp0y9rl6et', assignment_map={'/': '/'})
+  # tf.train.init_from_checkpoint('/tmp/tmpvm8qg4ro', assignment_map={'FBP/': 'FBP/'})
+
+
+  # if mode == tf.estimator.ModeKeys.EVAL:
+  with tf.variable_scope('FBP'):
+    image_outputs = fbp_subnet(prj_outputs)
+    image_labels = labels['image']
+    image_rrmse_metric = create_rrmse_metric(image_outputs, image_labels)
+
+
+
   if mode == tf.estimator.ModeKeys.TRAIN:
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops):
-      # optimizer = tf.train.MomentumOptimizer(learning_rate=FLAGS.learning_rate, momentum=FLAGS.momentum)
+      # optimizer = tf.train.MomentumOptimizer(learning_rate=1e-3, momentum=FLAGS.momentum)
       optimizer = tf.train.AdamOptimizer(learning_rate=1e-4)  # FLAGS.learning_rate)
       grads_and_vars = optimizer.compute_gradients(loss)
       clipped_grads_and_vars = [(tf.clip_by_norm(grad, 1e-4), var)
@@ -227,7 +244,8 @@ def prj_model_fn(features, labels, mode):
   return tf.estimator.EstimatorSpec(mode=mode,
                                     predictions=prj_outputs,
                                     loss=loss,
-                                    train_op=train_op)
+                                    train_op=train_op,
+                                    eval_metric_ops={'image_rrmse': image_rrmse_metric} if (mode == tf.estimator.ModeKeys.EVAL) else {})
 
 
 def branch_model_fn(features, labels, mode):
@@ -274,17 +292,21 @@ def main(_):
   os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.gpus
   config = tf.estimator.RunConfig().replace(save_checkpoints_secs=1e9,
                                             keep_checkpoint_max=1)
-  tensors_to_log = ['prj_loss', 'total_loss', 'rrmse', 'base_rrmse', 'base_loss']
+  tensors_to_log = ['prj_loss', 'total_loss', 'rrmse', 'base_rrmse', 'base_loss', 'Adam/learning_rate']
+  # tensors_to_log = []
   logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=100)
   # estimator = tf.estimator.Estimator(model_fn, model_dir=FLAGS.model_dir, config=config)
   # estimator = tf.estimator.Estimator(model_fn, model_dir=None, config=config)
   estimator = tf.estimator.Estimator(prj_model_fn, model_dir=None, config=config)
 
-  estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1), hooks=[logging_hook], max_steps=2000)
-  for _ in range(3):
-    estimator.train(lambda: input_fn('train', batch_size=FLAGS.batch_size, num_epochs=1), hooks=[logging_hook])
-    print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
-  # print(estimator.evaluate(lambda: input_fn('val', batch_size=1, num_epochs=1)))
+  ## TRAIN
+  # estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1), hooks=[logging_hook], max_steps=2000)
+  # for _ in range(3):
+  #   estimator.train(lambda: input_fn('train', batch_size=FLAGS.batch_size, num_epochs=1), hooks=[logging_hook])
+  #   print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
+
+  # estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1), hooks=[logging_hook], steps=1)
+  # print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
 
 if __name__ == '__main__':
   tf.logging.set_verbosity(tf.logging.INFO)

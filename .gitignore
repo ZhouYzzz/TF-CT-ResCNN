@@ -9,4 +9,4 @@ tmp/
 .mypy_cache
 .vscode/
 timeline.json
-
+tmp*/

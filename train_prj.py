@@ -189,6 +189,23 @@ def prj_est_network_v2(inputs):
 
 
 def prj_model_fn(features, labels, mode):
+  if mode == tf.estimator.ModeKeys.PREDICT:
+    print(features)
+    inputs = features['sparse3']
+    branch_outputs = list()
+    for i in range(5):
+      with tf.variable_scope('Branch{}'.format(i)):
+        outputs = projection_estimation_network(inputs, training=(mode == tf.estimator.ModeKeys.TRAIN))
+        branch_outputs.append(outputs)
+    outputs = slice_concat(branch_outputs, axis=3)
+    prj_outputs = outputs
+    with tf.variable_scope('FBP'):
+      image_outputs = fbp_subnet(prj_outputs)
+    return tf.estimator.EstimatorSpec(mode=mode,
+                                      predictions=image_outputs,
+                                      export_outputs={'outputs': tf.estimator.export.RegressionOutput(image_outputs)})
+
+
   inputs = features['inputs']
   sparse_outputs = slice_concat([inputs for _ in range(5)], axis=3)
   # prj_outputs = branch_network_v2(inputs)
@@ -406,18 +423,22 @@ def main(_):
   ## estimator = tf.estimator.Estimator(model_fn, model_dir=FLAGS.model_dir, config=config)
   ## estimator = tf.estimator.Estimator(model_fn, model_dir=None, config=config)
 
-  #estimator = tf.estimator.Estimator(prj_model_fn, model_dir=None, config=config)
-  estimator = tf.estimator.Estimator(refinement_model_fn, model_dir=None, config=config)
+  estimator = tf.estimator.Estimator(prj_model_fn, model_dir=None, config=config)
+  #estimator = tf.estimator.Estimator(refinement_model_fn, model_dir=None, config=config)
 
   ## TRAIN
   # estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1), hooks=[logging_hook], max_steps=2000)
-  estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1), hooks=[logging_hook], steps=2000)
-  for _ in range(10):
-    estimator.train(lambda: input_fn('train', batch_size=FLAGS.batch_size, num_epochs=1), hooks=[logging_hook])
-    print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
+
+  # estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1), hooks=[logging_hook], steps=2000)
+  # for _ in range(10):
+  #   estimator.train(lambda: input_fn('train', batch_size=FLAGS.batch_size, num_epochs=1), hooks=[logging_hook])
+  #   print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
 
   # estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1), hooks=[logging_hook], steps=1)
   # print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
+  from dataset import train_example_spec
+  estimator.export_savedmodel('tmpouizb6k5_projection_estimation_network',
+                              tf.estimator.export.build_parsing_serving_input_receiver_fn(train_example_spec()))
 
 if __name__ == '__main__':
   tf.logging.set_verbosity(tf.logging.INFO)

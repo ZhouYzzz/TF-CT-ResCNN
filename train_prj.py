@@ -24,7 +24,7 @@ tf.flags.DEFINE_string('gpus', '0', '')
 # LEARNING POLICY
 tf.flags.DEFINE_float('learning_rate', 1e-4, '')
 tf.flags.DEFINE_float('momentum', 0.9, '')
-tf.flags.DEFINE_float('weight_decay', 2e-4, '')
+tf.flags.DEFINE_float('weight_decay', 1e-4, '')
 FLAGS = tf.flags.FLAGS
 
 

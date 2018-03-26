@@ -4,6 +4,7 @@ Train a single image refinement network using pre-rfn dataset generated using th
 import tensorflow as tf
 from dataset.input_fn import prerfn_input_fn
 from model.image_refinement_network import image_refinement_network
+from model.red_cnn import red_cnn
 from utils.summary import visualize
 from utils.rrmse import create_rrmse_metric
 import dataset
@@ -17,16 +18,19 @@ tf.flags.DEFINE_integer('batch_size', 10, '')
 tf.flags.DEFINE_float('learning_rate', 1e-4, '')
 tf.flags.DEFINE_float('weight_decay', 1e-4, '')
 tf.flags.DEFINE_float('momentum', 0.9, '')
+tf.flags.DEFINE_integer('num_epochs', 10, '')
 
 tf.flags.DEFINE_string('gpus', '0', '')
+tf.flags.DEFINE_integer('verbose', False, '')
 FLAGS = tf.flags.FLAGS
 
 
 def rfn_model_fn(features, labels, mode):
-  inputs = features['prerfn']
+  inputs = features['prerfn'] * 50
   with tf.variable_scope('RFN'):
     outputs = image_refinement_network(inputs, training=(mode == tf.estimator.ModeKeys.TRAIN))
-  image_labels = labels['image']
+    #outputs = red_cnn(inputs)
+  image_labels = labels['image'] * 50
 
   loss = tf.reduce_mean(tf.map_fn(tf.nn.l2_loss, (outputs - image_labels)))
   loss = loss / (dataset.INFO.IMG_DEPTH * dataset.INFO.IMG_HEIGHT * dataset.INFO.IMG_WIDTH)
@@ -63,6 +67,8 @@ def rfn_model_fn(features, labels, mode):
 
 
 def main(_):
+  if FLAGS.verbose:
+    tf.logging.set_verbosity(tf.logging.INFO)
   os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.gpus
   config = tf.estimator.RunConfig(save_checkpoints_secs=1e9,
                                   keep_checkpoint_max=5)
@@ -73,12 +79,11 @@ def main(_):
   print(
     estimator.evaluate(lambda: prerfn_input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
 
-  for _ in range(10):
+  for _ in range(FLAGS.num_epochs):
     estimator.train(lambda: prerfn_input_fn('train', batch_size=FLAGS.batch_size, num_epochs=1), hooks=hooks)
     print(
       estimator.evaluate(lambda: prerfn_input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
 
 
 if __name__ == '__main__':
-  tf.logging.set_verbosity(tf.logging.INFO)
   tf.app.run()

@@ -16,7 +16,7 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', type=str, default='proposed')
 parser.add_argument('--model_dir', type=str, default=None)
-parser.add_argument('--pretrain_steps', type=int, default=0)
+parser.add_argument('--pretrain_steps', type=int, default=2000)
 parser.add_argument('--num_epoches', type=int, default=10)
 parser.add_argument('--batch_size', type=int, default=16)
 parser.add_argument('--learning_rate', type=float, default=1e-4)
@@ -29,8 +29,8 @@ FLAGS, _ = parser.parse_known_args()
 
 def model_fn(features, labels, mode, params):
   # Define model inputs and labels
-  image_inputs = features['prerfn']  # the raw reconstructed medical image
-  image_labels = labels['image']
+  image_inputs = features['prerfn'] * 50  # the raw reconstructed medical image
+  image_labels = labels['image'] * 50
 
   # Define the model
   with tf.variable_scope('Refinement'):
@@ -48,7 +48,7 @@ def model_fn(features, labels, mode, params):
   visualize(tf.concat([image_labels, image_inputs, image_outputs], axis=3), name='image')
 
   # Define metrics
-  metric = create_rrmse_metric(image_outputs, labels['image'])
+  metric = create_rrmse_metric(image_outputs, image_labels)
   tf.summary.scalar('rrmse', tf.identity(metric[1], 'rrmse'))
 
   train_op = training.create_train_op(
@@ -69,11 +69,11 @@ def model_fn(features, labels, mode, params):
 
 def gan_model_fn(features, labels, mode, params):
   # Define model inputs and labels
-  image_inputs = features['prerfn']  # the raw reconstructed medical image
-  image_labels = labels['image']
+  image_inputs = features['prerfn'] * 50  # the raw reconstructed medical image
+  image_labels = labels['image'] * 50
 
   # Define the GAN model
-  model = gan.gan_model(generator_fn=image_refinement_network,
+  model = gan.gan_model(generator_fn=lambda x: image_refinement_network(x, training=(mode == tf.estimator.ModeKeys.TRAIN)),
                         discriminator_fn=discriminator,
                         real_data=image_labels,
                         generator_inputs=image_inputs,
@@ -103,7 +103,7 @@ def gan_model_fn(features, labels, mode, params):
   visualize(tf.concat([image_labels, image_inputs, image_outputs], axis=3), name='image')
 
   # Define metrics
-  metric = create_rrmse_metric(image_outputs, labels['image'])
+  metric = create_rrmse_metric(image_outputs, image_labels)
   tf.summary.scalar('rrmse', tf.identity(metric[1], 'rrmse'))
 
   train_op = training.create_train_op(
@@ -126,19 +126,21 @@ def gan_model_fn(features, labels, mode, params):
 
 def main(_):
   config = tf.estimator.RunConfig(save_checkpoints_secs=1e9)
+  FLAGS.use_gan = True
   if FLAGS.use_gan:
-    model_fn = gan_model_fn
-  estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=FLAGS.model_dir, config=config)
+    estimator = tf.estimator.Estimator(model_fn=gan_model_fn, model_dir=FLAGS.model_dir, config=config)
+  else:
+    estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=FLAGS.model_dir, config=config)
 
   if FLAGS.pretrain_steps > 1:  # perform pretrain first
     estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1),
-                    hooks=[tf.train.LoggingTensorHook(['total_loss', 'rrmse'], every_n_iter=100)],
+                    hooks=[tf.train.LoggingTensorHook(['total_loss', 'rrmse'], every_n_iter=10)],
                     max_steps=FLAGS.pretrain_steps)
     print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
 
   for _ in range(FLAGS.num_epoches):
     estimator.train(lambda: input_fn('train', batch_size=FLAGS.batch_size, num_epochs=1),
-                    hooks=[tf.train.LoggingTensorHook(['total_loss', 'rrmse'], every_n_iter=100)])
+                    hooks=[tf.train.LoggingTensorHook(['total_loss', 'rrmse'], every_n_iter=10)])
     print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
 
 

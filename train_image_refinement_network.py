@@ -72,9 +72,13 @@ def gan_model_fn(features, labels, mode, params):
   image_inputs = features['prerfn'] * 50  # the raw reconstructed medical image
   image_labels = labels['image'] * 50
 
+  def cropped_discriminator(inputs, training=(mode == tf.estimator.ModeKeys.TRAIN)):
+    inputs = tf.random_crop(inputs, shape=(FLAGS.batch_size, 1, 64, 64))
+    return discriminator(inputs, training)
+
   # Define the GAN model
   model = gan.gan_model(generator_fn=lambda x: image_refinement_network(x, training=(mode == tf.estimator.ModeKeys.TRAIN)),
-                        discriminator_fn=discriminator,
+                        discriminator_fn=cropped_discriminator,
                         real_data=image_labels,
                         generator_inputs=image_inputs,
                         generator_scope='Refinement',

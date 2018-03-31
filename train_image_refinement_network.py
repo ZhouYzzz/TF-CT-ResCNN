@@ -87,18 +87,6 @@ def gan_model_fn(features, labels, mode, params):
   [tf.losses.add_loss(FLAGS.weight_decay * tf.nn.l2_loss(v), loss_collection=tf.GraphKeys.REGULARIZATION_LOSSES) for v in tf.trainable_variables('Projection')]
   loss = tf.losses.get_total_loss()
 
-  # Define GAN losses and train_ops
-  gan_loss = gan.gan_loss(model,
-                          generator_loss_fn=gan.losses.wasserstein_generator_loss,
-                          discriminator_loss_fn=gan.losses.wasserstein_discriminator_loss,
-                          gradient_penalty_weight=1.0)
-  gan_train_ops = gan.gan_train_ops(model,
-                                    gan_loss,
-                                    generator_optimizer=tf.train.AdamOptimizer(1e-5),
-                                    discriminator_optimizer=tf.train.AdamOptimizer(1e-4))
-  get_hook_fn = gan.get_sequential_train_hooks(gan.GANTrainSteps(1, 1))
-  gan_train_hooks = get_hook_fn(gan_train_ops)
-
   # Define summaries
   visualize(tf.concat([image_labels, image_inputs, image_outputs], axis=3), name='image')
 
@@ -114,22 +102,40 @@ def gan_model_fn(features, labels, mode, params):
     variables_to_train=tf.trainable_variables(scope='Refinement'),
     transform_grads_fn=training.clip_gradient_norms_fn(max_norm=FLAGS.clip_gradient))
 
+  # Define GAN losses and train_ops
+  with tf.control_dependencies([train_op]):
+    gan_loss = gan.gan_loss(model,
+                            generator_loss_fn=gan.losses.wasserstein_generator_loss,
+                            discriminator_loss_fn=gan.losses.wasserstein_discriminator_loss,
+                            gradient_penalty_weight=1.0)
+    gan_loss = gan.losses.combine_adversarial_loss(gan_loss, gan_model=model, non_adversarial_loss=loss, weight_factor=1e-3)
+    gan_train_ops = gan.gan_train_ops(model,
+                                      gan_loss,
+                                      generator_optimizer=tf.train.AdamOptimizer(1e-5),
+                                      discriminator_optimizer=tf.train.AdamOptimizer(1e-4))
+    # get_hook_fn = gan.get_sequential_train_hooks(gan.GANTrainSteps(1, 1))
+    # gan_train_hooks = get_hook_fn(gan_train_ops)
+    train_op = tf.group(train_op, gan_train_ops.discriminator_train_op, gan_train_ops.generator_train_op)
+
   return tf.estimator.EstimatorSpec(
     mode,
     predictions={'image_outputs': image_outputs},
     loss=loss,
     train_op=train_op,
     eval_metric_ops={'rrmse': metric},
-    training_hooks=gan_train_hooks)
+    training_hooks=None)
 
 
 
 def main(_):
   config = tf.estimator.RunConfig(save_checkpoints_secs=1e9)
-  FLAGS.use_gan = True
+  # FLAGS.use_gan = True
+  # FLAGS.pretrain_steps = 1000
   if FLAGS.use_gan:
+    print('USE GAN')
     estimator = tf.estimator.Estimator(model_fn=gan_model_fn, model_dir=FLAGS.model_dir, config=config)
   else:
+    print('NO GAN')
     estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=FLAGS.model_dir, config=config)
 
   if FLAGS.pretrain_steps > 1:  # perform pretrain first

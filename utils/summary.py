@@ -2,6 +2,7 @@ import tensorflow as tf
 
 
 def visualize(t, name, perm=True, max_outputs=3):
+  t = tf.nn.relu(t)
   return tf.summary.image(name, tf.transpose(t, perm=(0,2,3,1)) if perm else t, max_outputs=max_outputs)
 
 

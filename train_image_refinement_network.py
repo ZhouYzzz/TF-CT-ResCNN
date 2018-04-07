@@ -88,7 +88,7 @@ def gan_model_fn(features, labels, mode, params):
 
   # Define losses
   tf.losses.mean_squared_error(image_outputs, image_labels)
-  [tf.losses.add_loss(FLAGS.weight_decay * tf.nn.l2_loss(v), loss_collection=tf.GraphKeys.REGULARIZATION_LOSSES) for v in tf.trainable_variables('Projection')]
+  [tf.losses.add_loss(FLAGS.weight_decay * tf.nn.l2_loss(v), loss_collection=tf.GraphKeys.REGULARIZATION_LOSSES) for v in tf.trainable_variables('Refinement')]
   loss = tf.losses.get_total_loss()
 
   # Define summaries

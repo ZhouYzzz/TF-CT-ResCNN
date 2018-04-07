@@ -40,6 +40,7 @@ def create_wgan(fake, real, g_vars, opt_scope):
   with tf.variable_scope('D', reuse=tf.AUTO_REUSE):
     outputs_real = discriminator(cropped_real)
 
+
   reg_loss = 1e-4 * tf.add_n([tf.nn.l2_loss(v) for v in tf.trainable_variables(scope='D')])
   g_loss = tf.reduce_mean(outputs_fake) + reg_loss
   d_loss = tf.reduce_mean(outputs_real - outputs_fake) + reg_loss
@@ -47,11 +48,13 @@ def create_wgan(fake, real, g_vars, opt_scope):
   d_loss = tf.identity(d_loss, 'd_loss')
 
   d_vars = tf.trainable_variables('D')
+  d_clip = tf.group(*[v.assign(tf.clip_by_value(v, -0.01, 0.01)) for v in d_vars])
+
   # with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope='D')):
   with tf.variable_scope(opt_scope):
     g_train_op = tf.train.AdamOptimizer(learning_rate=5e-5).minimize(g_loss, var_list=g_vars)
     d_train_op = tf.train.AdamOptimizer(learning_rate=5e-5).minimize(d_loss, var_list=d_vars)
-  return g_train_op, d_train_op
+  return g_train_op, tf.group(d_train_op, d_clip)
 
 
 def rfn_model_fn(features, labels, mode):
@@ -130,7 +133,7 @@ def gan_model_fn(features, labels, mode, params):
     with tf.control_dependencies(update_ops):
       # define the wgan loss and train_ops
       train_op = tf.no_op()
-      for i in range(5):
+      for i in range(3):
         with tf.control_dependencies([train_op]):
           g_train_op, d_train_op = create_wgan(outputs, image_labels, g_vars=g_vars, opt_scope='OPT_{}'.format(i))
           if i == 0:
@@ -163,21 +166,22 @@ def main(_):
   os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.gpus
   config = tf.estimator.RunConfig(save_checkpoints_secs=1e9,
                                   keep_checkpoint_max=5)
-  # hooks = [tf.train.LoggingTensorHook(tensors=['rrmse', 'base_rrmse', 'd_loss', 'g_loss'],every_n_iter=100)]
+
   hooks = [tf.train.LoggingTensorHook(tensors=['rrmse', 'base_rrmse'], every_n_iter=100)]
-  # from train_rfn import rfn_model_fn
   estimator = tf.estimator.Estimator(rfn_model_fn, model_dir=None, config=config)
 
   estimator.train(lambda: prerfn_input_fn('train', batch_size=1, num_epochs=1), hooks=hooks, steps=1000)
   print(
     estimator.evaluate(lambda: prerfn_input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
 
+  # pretrained_model_dir = '/tmp/tmp9jk1lz1m'#estimator.model_dir
   pretrained_model_dir = estimator.model_dir
+
 
   ## GAN
 
   estimator = tf.estimator.Estimator(gan_model_fn, model_dir=FLAGS.model_dir, config=config, params={'pretrained_model_dir': pretrained_model_dir})
-  hooks = [tf.train.LoggingTensorHook(tensors=['rrmse', 'base_rrmse', 'd_loss:0', 'g_loss:0'], every_n_iter=100)]
+  hooks = [tf.train.LoggingTensorHook(tensors=['rrmse', 'base_rrmse', 'd_loss:0', 'g_loss:0'], every_n_iter=10)]
 
   for _ in range(FLAGS.num_epochs):
     estimator.train(lambda: prerfn_input_fn('train', batch_size=FLAGS.batch_size, num_epochs=1), hooks=hooks)

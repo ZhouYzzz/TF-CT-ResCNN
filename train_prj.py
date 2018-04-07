@@ -243,7 +243,7 @@ def prj_model_fn(features, labels, mode):
   tf.summary.scalar('base_rrmse', base_rrmse_metric[1])
 
   # continue training test
-  tf.train.init_from_checkpoint('tmpouizb6k5_projection_estimation_network', assignment_map={'/': '/'})
+  # tf.train.init_from_checkpoint('tmpouizb6k5_projection_estimation_network', assignment_map={'/': '/'})
 
   # tf.train.init_from_checkpoint('tmp0y9rl6et', assignment_map={'/': '/'})
   # tf.train.init_from_checkpoint('/tmp/tmpvm8qg4ro', assignment_map={'FBP/': 'FBP/'})
@@ -417,7 +417,7 @@ def main(_):
   config = tf.estimator.RunConfig().replace(save_checkpoints_secs=1e9,
                                             keep_checkpoint_max=1)
   tensors_to_log = ['prj_loss', 'base_loss', 'total_loss', 'rrmse', 'base_rrmse']#, 'Adam/learning_rate']
-  tensors_to_log = ['image_rfn_loss', 'base_image_loss', 'total_loss', 'image_rrmse', 'image_rfn_rrmse']
+  #tensors_to_log = ['image_rfn_loss', 'base_image_loss', 'total_loss', 'image_rrmse', 'image_rfn_rrmse']
   # tensors_to_log = []
   logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=100)
   ## estimator = tf.estimator.Estimator(model_fn, model_dir=FLAGS.model_dir, config=config)
@@ -426,13 +426,13 @@ def main(_):
   estimator = tf.estimator.Estimator(prj_model_fn, model_dir=None, config=config)
   #estimator = tf.estimator.Estimator(refinement_model_fn, model_dir=None, config=config)
 
-  ## TRAIN
-  # estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1), hooks=[logging_hook], max_steps=2000)
+  # TRAIN
+  estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1), hooks=[logging_hook], max_steps=2000)
 
   # estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1), hooks=[logging_hook], steps=2000)
-  # for _ in range(10):
-  #   estimator.train(lambda: input_fn('train', batch_size=FLAGS.batch_size, num_epochs=1), hooks=[logging_hook])
-  #   print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
+  for _ in range(10):
+    estimator.train(lambda: input_fn('train', batch_size=FLAGS.batch_size, num_epochs=1), hooks=[logging_hook])
+    print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
 
   # estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1), hooks=[logging_hook], steps=1)
   # print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))

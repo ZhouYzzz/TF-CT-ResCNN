@@ -16,9 +16,9 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', type=str, default='proposed')
 parser.add_argument('--model_dir', type=str, default=None)
-parser.add_argument('--pretrain_steps', type=int, default=2000)
+parser.add_argument('--pretrain_steps', type=int, default=0)
 parser.add_argument('--num_epoches', type=int, default=10)
-parser.add_argument('--batch_size', type=int, default=16)
+parser.add_argument('--batch_size', type=int, default=10)
 parser.add_argument('--learning_rate', type=float, default=1e-4)
 parser.add_argument('--weight_decay', type=float, default=1e-4)
 parser.add_argument('--clip_gradient', type=float, default=1e-4)
@@ -73,7 +73,7 @@ def gan_model_fn(features, labels, mode, params):
   image_labels = labels['image'] * 50
 
   def cropped_discriminator(inputs, training=(mode == tf.estimator.ModeKeys.TRAIN)):
-    inputs = tf.random_crop(inputs, shape=(FLAGS.batch_size, 1, 64, 64))
+    inputs = tf.random_crop(inputs, size=(FLAGS.batch_size, 1, 64, 64))
     return discriminator(inputs, training)
 
   # Define the GAN model
@@ -112,7 +112,7 @@ def gan_model_fn(features, labels, mode, params):
                             generator_loss_fn=gan.losses.wasserstein_generator_loss,
                             discriminator_loss_fn=gan.losses.wasserstein_discriminator_loss,
                             gradient_penalty_weight=1.0)
-    gan_loss = gan.losses.combine_adversarial_loss(gan_loss, gan_model=model, non_adversarial_loss=loss, weight_factor=1e-3)
+    # gan_loss = gan.losses.combine_adversarial_loss(gan_loss, gan_model=model, non_adversarial_loss=loss, weight_factor=1e-3)
     gan_train_ops = gan.gan_train_ops(model,
                                       gan_loss,
                                       generator_optimizer=tf.train.AdamOptimizer(1e-5),
@@ -133,7 +133,7 @@ def gan_model_fn(features, labels, mode, params):
 
 def main(_):
   config = tf.estimator.RunConfig(save_checkpoints_secs=1e9)
-  # FLAGS.use_gan = True
+  FLAGS.use_gan = True
   # FLAGS.pretrain_steps = 1000
   if FLAGS.use_gan:
     print('USE GAN')

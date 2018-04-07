@@ -1,5 +1,5 @@
 import tensorflow as tf
-
+from model.subnet.prj_est_impl import slice_concat
 
 _BATCH_NORM_DECAY = 0.997
 _BATCH_NORM_EPSILON = 1e-5
@@ -19,6 +19,18 @@ def conv2d_periodic_padding(inputs, filters, kernel_size, **kwargs):
   inputs = tf.layers.conv2d(inputs, filters, kernel_size, padding='valid', data_format='channels_first', **kwargs)
   return inputs
 
+def conv2d_no_periodic_padding(inputs, filters, kernel_size, **kwargs):
+  def _no_periodic_padding_along_angles(inputs, kernel_size):
+    """Performs a periodic padding along angle(width) dim."""
+    hpad_beg = (kernel_size[0] - 1) // 2
+    hpad_end = kernel_size[0] - 1 - hpad_beg
+    wpad_beg = (kernel_size[1] - 1) // 2
+    wpad_end = kernel_size[1] - 1 - wpad_beg
+    inputs = tf.pad(inputs, [[0, 0], [0, 0], [hpad_beg, hpad_end], [wpad_beg, wpad_end]])
+    return inputs
+  #inputs = _no_periodic_padding_along_angles(inputs, kernel_size=kernel_size)
+  inputs = tf.layers.conv2d(inputs, filters, kernel_size, padding='same', data_format='channels_first', **kwargs)
+  return inputs
 
 ################################################################################
 # Functions building the ResNet model.
@@ -84,6 +96,47 @@ def model(inputs, training, **conv_args):
   inputs = tf.identity(inputs, 'outputs')
   return inputs
 
+def model_no_padding(inputs, training, **conv_args):
+  shortcut_0 = inputs
+  inputs = conv2d_no_periodic_padding(inputs, 64, (9, 3), strides=(1, 1), **conv_args)
+  inputs = batch_norm_relu(inputs, training)
+  inputs = tf.identity(inputs, 'relu1')
+  inputs = conv2d_no_periodic_padding(inputs, 64, (9, 3), strides=(1, 1), **conv_args)
+  inputs = batch_norm_relu(inputs, training)
+  inputs = tf.identity(inputs, 'relu2')
+  shortcut_1 = inputs
+  inputs = conv2d_no_periodic_padding(inputs, 64, (9, 3), strides=(1, 1), **conv_args)
+  inputs = batch_norm_relu(inputs, training)
+  inputs = tf.identity(inputs, 'relu3')
+  inputs = conv2d_no_periodic_padding(inputs, 64, (9, 3), strides=(1, 1), **conv_args)
+  inputs = batch_norm_relu(inputs, training)
+  inputs = tf.identity(inputs, 'relu4')
+  inputs += shortcut_1
+  inputs = conv2d_no_periodic_padding(inputs, 64, (9, 3), strides=(1, 1), **conv_args)
+  inputs = batch_norm_relu(inputs, training)
+  inputs = tf.identity(inputs, 'relu5')
+  inputs = conv2d_no_periodic_padding(inputs, 16, (9, 3), strides=(1, 1), **conv_args)
+  inputs = batch_norm_relu(inputs, training)
+  inputs = tf.identity(inputs, 'relu6')
+  inputs = conv2d_no_periodic_padding(inputs, 1, (9, 3), strides=(1, 1), **conv_args)
+  inputs = batch_norm_relu(inputs, training)
+  inputs = tf.identity(inputs, 'relu7')
+  inputs += shortcut_0
+  inputs = tf.identity(inputs, 'outputs')
+  return inputs
 
 def projection_estimation_network(inputs, training):
   return model(inputs, training, kernel_initializer=tf.contrib.layers.xavier_initializer())
+
+def projection_estimation_network_no_padding(inputs, training):
+  return model_no_padding(inputs, training, kernel_initializer=tf.contrib.layers.xavier_initializer())
+
+
+def projection_estimation_network_v1(inputs, training):
+  projection_outputs = []
+  for i in range(5):
+    with tf.variable_scope('B{}'.format(i)):
+      branch_outputs = projection_estimation_network(inputs, training=training)
+      projection_outputs.append(branch_outputs)
+  projection_outputs = slice_concat(projection_outputs, axis=3)
+  return projection_outputs

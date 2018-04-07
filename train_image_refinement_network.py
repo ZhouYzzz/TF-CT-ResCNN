@@ -133,8 +133,6 @@ def gan_model_fn(features, labels, mode, params):
 
 def main(_):
   config = tf.estimator.RunConfig(save_checkpoints_secs=1e9)
-  FLAGS.use_gan = True
-  # FLAGS.pretrain_steps = 1000
   if FLAGS.use_gan:
     print('USE GAN')
     estimator = tf.estimator.Estimator(model_fn=gan_model_fn, model_dir=FLAGS.model_dir, config=config)

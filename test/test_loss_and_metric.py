@@ -8,7 +8,7 @@ y = tf.placeholder(tf.float32, shape=(None, 1, 2))
 loss1 = tf.losses.mean_squared_error(x, y)
 
 loss2 = tf.reduce_mean(tf.map_fn(tf.nn.l2_loss, (x - y)))
-loss2 = loss2 / 1000.
+loss2 = loss2
 
 rrmse1 = create_rrmse_metric(x, y)
 # tf.identity(rrmse1[0], 'rrmse1')
@@ -21,7 +21,7 @@ sess = tf.Session()
 sess.run(tf.global_variables_initializer())
 sess.run(tf.local_variables_initializer())
 for _ in range(1):
-  r = sess.run([loss1, loss2, rrmse1[1], rrmse2[1], rrmse3[1], rrmse4[1]], feed_dict={x:np.array([[[1,2]]]), y:np.array([[[2,4]]])})
+  r = sess.run([loss1, loss2, rrmse1[1], rrmse2[1], rrmse3[1], rrmse4[1]], feed_dict={x:np.array([[[4,2]]]), y:np.array([[[2,4]]])})
                # feed_dict={x: np.random.rand(100, 10, 10, 10),
                #            y: np.random.rand(100, 10, 10, 10)})
   print(r)

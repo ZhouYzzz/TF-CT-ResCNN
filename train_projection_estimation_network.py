@@ -18,7 +18,7 @@ parser.add_argument('--model', type=str, default='proposed')
 parser.add_argument('--model_dir', type=str, default=None)
 parser.add_argument('--pretrain_steps', type=int, default=2000)
 parser.add_argument('--num_epoches', type=int, default=10)
-parser.add_argument('--batch_size', type=int, default=16)
+parser.add_argument('--batch_size', type=int, default=10)
 parser.add_argument('--learning_rate', type=float, default=1e-4)
 parser.add_argument('--weight_decay', type=float, default=1e-4)
 parser.add_argument('--clip_gradient', type=float, default=1e-4)
@@ -35,6 +35,9 @@ def model_fn(features, labels, mode, params):
   with tf.variable_scope('Projection'):
     if FLAGS.model == 'proposed':
       projection_outputs = projection_estimation_network_v1(sparse_inputs, training=(mode == tf.estimator.ModeKeys.TRAIN))
+    elif FLAGS.model == 'v2':  # using shared weights and skip connection
+      from model.projection_estimation_network_v2 import projection_estimation_network_v2
+      projection_outputs = projection_estimation_network_v2(sparse_inputs, training=(mode == tf.estimator.ModeKeys.TRAIN))
     else:
       raise ValueError('No recognized model named `{}`'.format(FLAGS.model))
 
@@ -71,13 +74,13 @@ def model_fn(features, labels, mode, params):
 
 
 def main(_):
-  FLAGS.model_dir = '/tmp/tmptmatcun6'
   config = tf.estimator.RunConfig(save_checkpoints_secs=1e9)
   estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=FLAGS.model_dir, config=config)
-  estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1),
-                  hooks=[tf.train.LoggingTensorHook(['total_loss', 'rrmse'], every_n_iter=100)],
-                  max_steps=FLAGS.pretrain_steps)
-  print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
+  if FLAGS.pretrain_steps > 0:
+    estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1),
+                    hooks=[tf.train.LoggingTensorHook(['total_loss', 'rrmse'], every_n_iter=100)],
+                    max_steps=FLAGS.pretrain_steps)
+    print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
 
   for _ in range(FLAGS.num_epoches):
     estimator.train(lambda: input_fn('train', batch_size=FLAGS.batch_size, num_epochs=1),

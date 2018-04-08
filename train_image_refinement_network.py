@@ -23,8 +23,10 @@ parser.add_argument('--learning_rate', type=float, default=1e-4)
 parser.add_argument('--weight_decay', type=float, default=1e-4)
 parser.add_argument('--clip_gradient', type=float, default=1e-4)
 parser.add_argument('--use_gan', type=bool, default=False)
+parser.add_argument('--gen_lr', type=float, default=1e-4)
+parser.add_argument('--diss_lr', type=float, default=1e-4)
 
-FLAGS, _ = parser.parse_known_args()
+FLAGS = parser.parse_args()
 
 
 def model_fn(features, labels, mode, params):
@@ -115,8 +117,8 @@ def gan_model_fn(features, labels, mode, params):
     # gan_loss = gan.losses.combine_adversarial_loss(gan_loss, gan_model=model, non_adversarial_loss=loss, weight_factor=1e-3)
     gan_train_ops = gan.gan_train_ops(model,
                                       gan_loss,
-                                      generator_optimizer=tf.train.AdamOptimizer(1e-5),
-                                      discriminator_optimizer=tf.train.AdamOptimizer(1e-4))
+                                      generator_optimizer=tf.train.AdamOptimizer(FLAGS.gen_lr),
+                                      discriminator_optimizer=tf.train.AdamOptimizer(FLAGS.diss_lr))
     # get_hook_fn = gan.get_sequential_train_hooks(gan.GANTrainSteps(1, 1))
     # gan_train_hooks = get_hook_fn(gan_train_ops)
     train_op = tf.group(train_op, gan_train_ops.discriminator_train_op, gan_train_ops.generator_train_op)

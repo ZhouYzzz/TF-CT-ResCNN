@@ -78,5 +78,46 @@ def model(inputs, training, **conv_args):
   return inputs
 
 
+def model_v2(inputs, training, **conv_args):
+  shortcut_0 = inputs
+  inputs = conv2d_fixed_padding(inputs, 64, (5, 5), strides=(1, 1), **conv_args)
+  inputs = batch_norm_relu(inputs, training)
+  inputs = tf.identity(inputs, 'relu1')
+  shortcut_1 = inputs
+  inputs = conv2d_fixed_padding(inputs, 64, (5, 5), strides=(1, 1), **conv_args)
+  inputs = batch_norm_relu(inputs, training)
+  inputs = tf.identity(inputs, 'relu2')
+  inputs = conv2d_fixed_padding(inputs, 64, (5, 5), strides=(1, 1), **conv_args)
+  inputs = batch_norm_relu(inputs, training)
+  inputs = tf.identity(inputs, 'relu3')
+  inputs += shortcut_1
+  shortcut_2 = inputs
+  inputs = conv2d_fixed_padding(inputs, 64, (5, 5), strides=(1, 1), **conv_args)
+  inputs = batch_norm_relu(inputs, training)
+  inputs = tf.identity(inputs, 'relu4')
+  inputs = conv2d_fixed_padding(inputs, 64, (5, 5), strides=(1, 1), **conv_args)
+  inputs = batch_norm_relu(inputs, training)
+  inputs = tf.identity(inputs, 'relu5')
+  inputs += shortcut_2
+  inputs = conv2d_fixed_padding(inputs, 16, (5, 5), strides=(1, 1), **conv_args)
+  inputs = batch_norm_relu(inputs, training)
+  inputs = tf.identity(inputs, 'relu6')
+  inputs = conv2d_fixed_padding(inputs, 1, (5, 5), strides=(1, 1), **conv_args)
+  inputs = batch_norm_relu(inputs, training)
+  inputs = tf.identity(inputs, 'relu7')
+  inputs += shortcut_0
+  inputs = tf.identity(inputs, 'outputs')
+  return inputs
+
+
 def image_refinement_network(inputs, training):
   return model(inputs, training, kernel_initializer=tf.contrib.layers.xavier_initializer())
+
+
+def image_refinement_network_v2(inputs, training):
+  return model_v2(inputs, training, kernel_initializer=tf.contrib.layers.xavier_initializer())
+
+
+def image_refinement_network_v3(inputs, training):
+  sc = conv2d_fixed_padding(inputs, 1, (5, 5), kernel_initializer=tf.zeros_initializer())
+  return inputs + sc

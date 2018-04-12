@@ -388,7 +388,8 @@ class Model(object):
       # Convert the inputs from channels_last (NHWC) to channels_first (NCHW).
       # This provides a large performance boost on GPU. See
       # https://www.tensorflow.org/performance/performance_guide#data_formats
-      inputs = tf.transpose(inputs, [0, 3, 1, 2])
+      # inputs = tf.transpose(inputs, [0, 3, 1, 2])
+      pass
 
     inputs = conv2d_fixed_padding(
         inputs=inputs, filters=self.num_filters, kernel_size=self.kernel_size,

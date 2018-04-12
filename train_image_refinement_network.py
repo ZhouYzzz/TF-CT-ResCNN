@@ -6,8 +6,8 @@ import tensorflow.contrib.layers as layers
 import tensorflow.contrib.gan as gan
 
 from dataset.input_fn import prerfn_input_fn as input_fn
-from model.image_refinement_network import image_refinement_network
-from model.discriminator import discriminator
+from model.image_refinement_network import image_refinement_network, image_refinement_network_v2, image_refinement_network_v3
+from model.discriminator import discriminator, discriminator_v2
 from utils.summary import visualize
 from utils.rrmse import create_rrmse_metric
 
@@ -38,6 +38,8 @@ def model_fn(features, labels, mode, params):
   with tf.variable_scope('Refinement'):
     if FLAGS.model == 'proposed':
       image_outputs = image_refinement_network(image_inputs, training=(mode == tf.estimator.ModeKeys.TRAIN))
+    elif FLAGS.model == 'v2':
+      image_outputs = image_refinement_network_v2(image_inputs, training=(mode == tf.estimator.ModeKeys.TRAIN))
     else:
       raise ValueError('No recognized model named `{}`'.format(FLAGS.model))
 
@@ -45,9 +47,11 @@ def model_fn(features, labels, mode, params):
   tf.losses.mean_squared_error(image_outputs, image_labels)
   [tf.losses.add_loss(FLAGS.weight_decay * tf.nn.l2_loss(v), loss_collection=tf.GraphKeys.REGULARIZATION_LOSSES) for v in tf.trainable_variables('Projection')]
   loss = tf.losses.get_total_loss()
+  image_diff = image_outputs - image_labels
 
   # Define summaries
   visualize(tf.concat([image_labels, image_inputs, image_outputs], axis=3), name='image')
+  visualize(tf.concat(image_diff, axis=3), name='image', use_relu=False)
 
   # Define metrics
   metric = create_rrmse_metric(image_outputs, image_labels)
@@ -74,12 +78,22 @@ def gan_model_fn(features, labels, mode, params):
   image_inputs = features['prerfn'] * 50  # the raw reconstructed medical image
   image_labels = labels['image'] * 50
 
-  def cropped_discriminator(inputs, training=(mode == tf.estimator.ModeKeys.TRAIN)):
+  def cropped_discriminator(inputs, generator_inputs, training=(mode == tf.estimator.ModeKeys.TRAIN)):
     inputs = tf.random_crop(inputs, size=(FLAGS.batch_size, 1, 64, 64))
     return discriminator(inputs, training)
 
   # Define the GAN model
-  model = gan.gan_model(generator_fn=lambda x: image_refinement_network(x, training=(mode == tf.estimator.ModeKeys.TRAIN)),
+  if FLAGS.model == 'proposed':
+    generator_fn = lambda x: image_refinement_network(x, training=(mode == tf.estimator.ModeKeys.TRAIN))
+  elif FLAGS.model == 'v2':
+    generator_fn = lambda x: image_refinement_network_v2(x, training=(mode == tf.estimator.ModeKeys.TRAIN))
+  elif FLAGS.model == 'v3':
+    # v3 is a 1-layer 0 init model for experiements only
+    generator_fn = lambda x: image_refinement_network_v3(x, training=(mode == tf.estimator.ModeKeys.TRAIN))
+  else:
+    raise ValueError('No recognized model named `{}`'.format(FLAGS.model))
+
+  model = gan.gan_model(generator_fn=generator_fn,
                         discriminator_fn=cropped_discriminator,
                         real_data=image_labels,
                         generator_inputs=image_inputs,
@@ -87,14 +101,17 @@ def gan_model_fn(features, labels, mode, params):
                         discriminator_scope='Discriminator',
                         check_shapes=True)
   image_outputs = model.generated_data
+  # tf.train.init_from_checkpoint('/tmp/GAN', assignment_map={'Refinement/': 'Refinement/'})
 
   # Define losses
   tf.losses.mean_squared_error(image_outputs, image_labels)
   [tf.losses.add_loss(FLAGS.weight_decay * tf.nn.l2_loss(v), loss_collection=tf.GraphKeys.REGULARIZATION_LOSSES) for v in tf.trainable_variables('Refinement')]
   loss = tf.losses.get_total_loss()
+  image_diff = image_outputs - image_labels
 
   # Define summaries
   visualize(tf.concat([image_labels, image_inputs, image_outputs], axis=3), name='image')
+  visualize(tf.concat(image_diff, axis=3), name='image', use_relu=False)
 
   # Define metrics
   metric = create_rrmse_metric(image_outputs, image_labels)
@@ -113,7 +130,7 @@ def gan_model_fn(features, labels, mode, params):
     gan_loss = gan.gan_loss(model,
                             generator_loss_fn=gan.losses.wasserstein_generator_loss,
                             discriminator_loss_fn=gan.losses.wasserstein_discriminator_loss,
-                            gradient_penalty_weight=1.0)
+                            gradient_penalty_weight=0)
     # gan_loss = gan.losses.combine_adversarial_loss(gan_loss, gan_model=model, non_adversarial_loss=loss, weight_factor=1e-3)
     gan_train_ops = gan.gan_train_ops(model,
                                       gan_loss,
@@ -122,6 +139,10 @@ def gan_model_fn(features, labels, mode, params):
     # get_hook_fn = gan.get_sequential_train_hooks(gan.GANTrainSteps(1, 1))
     # gan_train_hooks = get_hook_fn(gan_train_ops)
     train_op = tf.group(train_op, gan_train_ops.discriminator_train_op, gan_train_ops.generator_train_op)
+
+  with tf.control_dependencies([train_op]):
+    clip_ops = tf.group(*[tf.clip_by_value(v, -0.01, 0.01) for v in tf.trainable_variables(scope='Discriminator')])
+    train_op = tf.group(train_op, clip_ops)
 
   return tf.estimator.EstimatorSpec(
     mode,
@@ -144,13 +165,13 @@ def main(_):
 
   if FLAGS.pretrain_steps > 1:  # perform pretrain first
     estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1),
-                    hooks=[tf.train.LoggingTensorHook(['total_loss', 'rrmse'], every_n_iter=10)],
+                    hooks=[tf.train.LoggingTensorHook(['total_loss', 'rrmse'], every_n_iter=100)],
                     max_steps=FLAGS.pretrain_steps)
     print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
 
   for _ in range(FLAGS.num_epoches):
     estimator.train(lambda: input_fn('train', batch_size=FLAGS.batch_size, num_epochs=1),
-                    hooks=[tf.train.LoggingTensorHook(['total_loss', 'rrmse'], every_n_iter=10)])
+                    hooks=[tf.train.LoggingTensorHook(['total_loss', 'rrmse'], every_n_iter=100)])
     print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
 
 

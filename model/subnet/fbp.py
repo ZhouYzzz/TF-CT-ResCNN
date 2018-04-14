@@ -5,9 +5,9 @@ import tensorflow as tf
 import os
 import dataset.info as info
 
-tf.flags.DEFINE_string('_system_dir', './model/subnet/', '')
-
-FLAGS = tf.flags.FLAGS
+# tf.flags.DEFINE_string('_system_dir', './model/subnet/', '')
+#
+# FLAGS = tf.flags.FLAGS
 
 
 

@@ -121,3 +121,115 @@ def image_refinement_network_v2(inputs, training):
 def image_refinement_network_v3(inputs, training):
   sc = conv2d_fixed_padding(inputs, 1, (5, 5), kernel_initializer=tf.zeros_initializer())
   return inputs + sc
+
+
+def image_refinement_network_v4(inputs, training):
+  """Used in the denosing paper"""
+  conv_args = {
+
+  }
+  inputs = conv2d_fixed_padding(inputs, 32, kernel_size=(3, 3), strides=(1, 1), **conv_args)
+  inputs = batch_norm_relu(inputs, training=training, data_format='channels_first')
+  inputs = conv2d_fixed_padding(inputs, 32, kernel_size=(3, 3), strides=(1, 1), **conv_args)
+  inputs = batch_norm_relu(inputs, training=training, data_format='channels_first')
+  inputs = conv2d_fixed_padding(inputs, 32, kernel_size=(3, 3), strides=(1, 1), **conv_args)
+  inputs = batch_norm_relu(inputs, training=training, data_format='channels_first')
+  inputs = conv2d_fixed_padding(inputs, 32, kernel_size=(3, 3), strides=(1, 1), **conv_args)
+  inputs = batch_norm_relu(inputs, training=training, data_format='channels_first')
+  inputs = conv2d_fixed_padding(inputs, 32, kernel_size=(3, 3), strides=(1, 1), **conv_args)
+  inputs = batch_norm_relu(inputs, training=training, data_format='channels_first')
+  inputs = conv2d_fixed_padding(inputs, 32, kernel_size=(3, 3), strides=(1, 1), **conv_args)
+  inputs = batch_norm_relu(inputs, training=training, data_format='channels_first')
+  inputs = conv2d_fixed_padding(inputs, 32, kernel_size=(3, 3), strides=(1, 1), **conv_args)
+  inputs = batch_norm_relu(inputs, training=training, data_format='channels_first')
+  inputs = conv2d_fixed_padding(inputs, 1, kernel_size=(3, 3), strides=(1, 1), **conv_args)
+  inputs = batch_norm_relu(inputs, training=training, data_format='channels_first')
+  return inputs
+
+
+def conv2d(inputs, filters, kernel_size, strides, **kwargs):
+  return tf.layers.conv2d(inputs=inputs,
+                          filters=filters,
+                          kernel_size=kernel_size,
+                          strides=strides,
+                          # padding='same',
+                          data_format='channels_first',
+                          **kwargs)
+
+
+def conv2d_transpose(inputs, filters, kernel_size, strides, **kwargs):
+  return tf.layers.conv2d_transpose(inputs=inputs,
+                                    filters=filters,
+                                    kernel_size=kernel_size,
+                                    strides=strides,
+                                    # padding='same',
+                                    data_format='channels_first',
+                                    **kwargs)
+
+
+def image_refinement_network_v5(inputs, training=False):
+  """Implement the transform network in arXiv 1706.09:
+  Perceptual Adversarial Networks for Image-to-Image Transformation"""
+  shared_args = {
+    'kernel_initializer': tf.contrib.layers.xavier_initializer()
+  }
+  conv_args = {
+    'padding': 'same',
+    **shared_args
+  }
+  conv_args_2 = {
+    'padding': 'valid',
+    **shared_args
+  }
+  raw = inputs
+  inputs = conv2d(inputs, filters=16, kernel_size=(3, 3), strides=(2, 2), **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)  # 1
+  # print(inputs)
+  inputs = conv2d(inputs, filters=32, kernel_size=(3, 3), strides=(2, 2), **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)  # 2
+  # print(inputs)
+  shortcut_2 = inputs
+  inputs = conv2d(inputs, filters=64, kernel_size=(3, 3), strides=(2, 2), **conv_args_2)
+  inputs = batch_norm_relu(inputs, training=training)  # 3
+  # print(inputs)
+  shortcut_3 = inputs
+  inputs = conv2d(inputs, filters=128, kernel_size=(3, 3), strides=(2, 2), **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)  # 4
+  # print(inputs)
+  shortcut_4 = inputs
+  inputs = conv2d(inputs, filters=128, kernel_size=(3, 3), strides=(2, 2), **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)  # 5
+  # print(inputs)
+  shortcut_5 = inputs
+  inputs = conv2d(inputs, filters=128, kernel_size=(3, 3), strides=(2, 2), **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)  # 6
+  # print(inputs)
+  inputs = conv2d_transpose(inputs, filters=128, kernel_size=(4, 4), strides=(2, 2), **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)  # 7
+  # print(inputs)
+  inputs = tf.concat([inputs, shortcut_5], axis=1)
+  inputs = conv2d_transpose(inputs, filters=64, kernel_size=(4, 4), strides=(2, 2), **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)  # 8
+  # print(inputs)
+  inputs = tf.concat([inputs, shortcut_4], axis=1)
+  inputs = conv2d_transpose(inputs, filters=32, kernel_size=(4, 4), strides=(2, 2), **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)  # 9
+  # print(inputs)
+  inputs = tf.concat([inputs, shortcut_3], axis=1)
+  inputs = conv2d_transpose(inputs, filters=16, kernel_size=(4, 4), strides=(2, 2), **conv_args_2)
+  inputs = batch_norm_relu(inputs, training=training)  # 10
+  # print(inputs)
+  inputs = tf.concat([inputs, shortcut_2], axis=1)
+  inputs = conv2d_transpose(inputs, filters=16, kernel_size=(4, 4), strides=(2, 2), **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)  # 11
+  # print(inputs)
+  inputs = conv2d_transpose(inputs, filters=1, kernel_size=(4, 4), strides=(2, 2), **conv_args)
+  # inputs = batch_norm_relu(inputs, training=training)  # 12
+  # print(inputs)
+  inputs += raw
+  return inputs
+
+
+if __name__ == '__main__':
+  x = tf.placeholder(tf.float32, shape=(None, 1, 200, 200))
+  outputs = image_refinement_network_v5(inputs=x)

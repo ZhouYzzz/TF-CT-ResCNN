@@ -19,27 +19,28 @@ tf.flags.DEFINE_integer('batch_size', 16, '')
 FLAGS = tf.flags.FLAGS
 
 
-def train_input_fn(batch_size, epochs=None):
-  dataset = tf.data.TFRecordDataset(glob.glob(os.path.join(FLAGS.data_dir, 'train*.tfrecords')))
-  dataset = dataset.repeat(epochs)
-  dataset = dataset.map(lambda s: tf.parse_single_example(s, features=train_example_spec()))
-  dataset = dataset.prefetch(batch_size)
-  dataset = dataset.batch(batch_size)
-  iterator = dataset.make_one_shot_iterator()
-  features = iterator.get_next()
-  labels = features
-  return {'inputs': features['sparse3']}, labels
-
-
-def eval_input_fn(batch_size):
-  dataset = tf.data.TFRecordDataset(os.path.join(FLAGS.data_dir, 'val.tfrecords'))
-  dataset = dataset.map(lambda s: tf.parse_single_example(s, features=train_example_spec()))
-  dataset = dataset.prefetch(batch_size)
-  dataset = dataset.batch(batch_size)
-  iterator = dataset.make_one_shot_iterator()
-  features = iterator.get_next()
-  labels = features
-  return {'inputs': features['sparse3']}, labels
+# def train_input_fn(batch_size, epochs=None):
+#   dataset = tf.data.TFRecordDataset(glob.glob(os.path.join(FLAGS.data_dir, 'train*.tfrecords')))
+#   dataset = dataset.repeat(epochs)
+#   dataset = dataset.map(lambda s: tf.parse_single_example(s, features=train_example_spec()))
+#   dataset = dataset.prefetch(batch_size)
+#   dataset = dataset.batch(batch_size)
+#   iterator = dataset.make_one_shot_iterator()
+#   features = iterator.get_next()
+#   labels = features
+#   return {'inputs': features['sparse3']}, labels
+#
+#
+# def eval_input_fn(batch_size):
+#   dataset = tf.data.TFRecordDataset(os.path.join(FLAGS.data_dir, 'val.tfrecords'))
+#   dataset = dataset.map(lambda s: tf.parse_single_example(s, features=train_example_spec()))
+#   dataset = dataset.prefetch(batch_size)
+#   dataset = dataset.batch(batch_size)
+#   iterator = dataset.make_one_shot_iterator()
+#   features = iterator.get_next()
+#   labels = features
+#   return {'inputs': features['sparse3']}, labels
+from dataset.input_fn import input_fn
 
 
 def create_rrmse_metric(source, target):
@@ -167,16 +168,15 @@ def main(_):
   estimator = tf.estimator.Estimator(model_fn=groundtruth_model,
                                      model_dir=FLAGS.model_dir,
                                      config=config)
-  estimator.train(input_fn=lambda: train_input_fn(FLAGS.batch_size), max_steps=1000)
-  eval_results = estimator.evaluate(input_fn=lambda: eval_input_fn(FLAGS.batch_size))
+  estimator.train(input_fn=lambda: input_fn(mode='val', batch_size=FLAGS.batch_size, num_epochs=1), max_steps=1)
+  eval_results = estimator.evaluate(input_fn=lambda: input_fn('train', FLAGS.batch_size, num_epochs=1))
   print(eval_results)
 
   estimator = tf.estimator.Estimator(model_fn=sparse_only_model,
                                      model_dir=FLAGS.model_dir,
                                      config=config)
-  eval_results = estimator.evaluate(input_fn=lambda: eval_input_fn(FLAGS.batch_size))
+  eval_results = estimator.evaluate(input_fn=lambda: input_fn('train', FLAGS.batch_size, num_epochs=1))
   print(eval_results)
-  tf.sparse_tensor_dense_matmul()
 
 
 

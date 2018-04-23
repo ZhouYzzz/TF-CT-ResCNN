@@ -82,7 +82,7 @@ def sparse_input_fn(mode='train',
   dataset = tf.data.TFRecordDataset(filenames=tfrecord_files)  # type: tf.data.Dataset
   dataset = dataset.map(lambda s: tf.parse_single_example(s, features=train_example_spec()))
   attached_dataset = tf.data.TFRecordDataset(filenames=attached_tfrecord_files)  # type: tf.data.Dataset
-  attached_dataset = attached_dataset.map(lambda s: tf.parse_single_example(s, features={'prerfn': tf.FixedLenFeature(shape=(info.IMG_DEPTH, info.IMG_HEIGHT, info.IMG_WIDTH), dtype=tf.float32)}))
+  attached_dataset = attached_dataset.map(lambda s: tf.parse_single_example(s, features={'sparse': tf.FixedLenFeature(shape=(info.IMG_DEPTH, info.IMG_HEIGHT, info.IMG_WIDTH), dtype=tf.float32)}))
 
   dataset = tf.data.Dataset.zip((dataset, attached_dataset))
 
@@ -95,7 +95,7 @@ def sparse_input_fn(mode='train',
 
   iterator = dataset.make_one_shot_iterator()
   example, pair = iterator.get_next()
-  features = {'inputs': example['sparse3'], 'sparse': pair['sparse']}
+  features = {'inputs': example['sparse3'], 'prerfn': pair['sparse']}
   labels = example
   return features, labels
 

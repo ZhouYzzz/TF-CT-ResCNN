@@ -52,6 +52,34 @@ def discriminator(inputs, training=False):
                           bias_regularizer=tf.contrib.layers.l2_regularizer(1e-4))
 
 
+def discriminator_v5(inputs, training=False):
+  """Implement the PAN discriminator described in arXiv 1706.09"""
+  conv_args = {
+    'data_format': 'channels_first'
+  }
+  inputs = tf.layers.conv2d(inputs, 16, (3, 3), (1, 1), padding='same', **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)  # 1
+  inputs = tf.layers.conv2d(inputs, 32, (3, 3), (2, 2), padding='same', **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)
+  inputs = tf.layers.conv2d(inputs, 32, (3, 3), (1, 1), padding='same', **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)
+  inputs = tf.layers.conv2d(inputs, 64, (3, 3), (2, 2), padding='same', **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)  # 2
+  inputs = tf.layers.conv2d(inputs, 64, (3, 3), (1, 1), padding='same', **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)
+  inputs = tf.layers.conv2d(inputs, 128, (3, 3), (2, 2), padding='same', **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)  # 3
+  inputs = tf.layers.conv2d(inputs, 128, (3, 3), (1, 1), padding='same', **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)
+  inputs = tf.layers.conv2d(inputs, 128, (3, 3), (2, 2), padding='same', **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)  # 4
+  inputs = tf.layers.conv2d(inputs, 8, (3, 3), (2, 2), padding='same', **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)
+  inputs = tf.layers.flatten(inputs)
+  inputs = tf.layers.dense(inputs, 1)
+  return inputs
+
+
 if __name__ == '__main__':
   x = tf.placeholder(tf.float32, shape=(None, 1, 64, 64))
   outputs = discriminator(x, training=True)

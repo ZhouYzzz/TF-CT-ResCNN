@@ -55,3 +55,15 @@ Comparison
 * My implementation /tmp/tmp1oqlm56y/ 0.76
 
 ## Using Generative Adversarial Networks
+
+1. Unconstrainted, learning diff `/tmp/tmp4zcuej27/`
+
+2. Unconstrainted, learning conv `/tmp/tmpcqi0biqy/`
+
+3. The diss seems too strong. decay the lr by 10, `/tmp/tmprmt551jm/`
+
+4. Constrainted, ratio 1e-3 `/tmp/tmp3rc7iy9a`
+
+5. ratio 0 `tmp/tmp000`
+
+6. ratio 1e-1

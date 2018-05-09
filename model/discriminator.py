@@ -55,7 +55,9 @@ def discriminator(inputs, training=False):
 def discriminator_v5(inputs, training=False):
   """Implement the PAN discriminator described in arXiv 1706.09"""
   conv_args = {
-    'data_format': 'channels_first'
+    'data_format': 'channels_first',
+    'use_bias': False,
+    'kernel_regularizer': tf.contrib.layers.l2_regularizer(1e-4)
   }
   inputs = tf.layers.conv2d(inputs, 16, (3, 3), (1, 1), padding='same', **conv_args)
   inputs = batch_norm_relu(inputs, training=training)  # 1

@@ -28,7 +28,7 @@ parser.add_argument('--gen_lr', type=float, default=1e-4)
 parser.add_argument('--diss_lr', type=float, default=1e-4)
 parser.add_argument('--scale', type=float, default=50.)
 
-FLAGS = parser.parse_args()
+FLAGS = parser.parse_args('--model v5 --num_epoches 20 --batch_size 32 --learning_rate 4e-4 --clip_gradient 1e-2 --use_gan 1 --model_dir /home/zhouyz/Development/TF-CT-ResCNN/devlog/tmpwsywmwz4'.split(' '))
 
 
 def model_fn(features, labels, mode, params):
@@ -129,7 +129,7 @@ def gan_model_fn(features, labels, mode, params):
   metric = create_rrmse_metric(image_outputs, image_labels)
   tf.summary.scalar('rrmse', tf.identity(metric[1], 'rrmse'))
 
-  # train_op = training.create_train_op(
+  # train_op = training.create_train_op(3rc7iy9a
   #   total_loss=loss,
   #   optimizer=tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate),
   #   global_step=tf.train.get_or_create_global_step(),
@@ -143,15 +143,16 @@ def gan_model_fn(features, labels, mode, params):
   gan_loss = gan.gan_loss(model,
                           generator_loss_fn=gan.losses.wasserstein_generator_loss,
                           discriminator_loss_fn=gan.losses.wasserstein_discriminator_loss,
-                          gradient_penalty_weight=None)
+                          gradient_penalty_weight=1.0)
   gan_loss = gan.losses.combine_adversarial_loss(gan_loss,
                                                  gan_model=model,
                                                  non_adversarial_loss=loss,
-                                                 weight_factor=1e-3)
+                                                 gradient_ratio=1)
   gan_train_ops = gan.gan_train_ops(model,
                                     gan_loss,
                                     generator_optimizer=tf.train.AdamOptimizer(FLAGS.gen_lr),
-                                    discriminator_optimizer=tf.train.AdamOptimizer(FLAGS.diss_lr))
+                                    discriminator_optimizer=tf.train.AdamOptimizer(FLAGS.diss_lr),
+                                    transform_grads_fn=training.clip_gradient_norms_fn(max_norm=FLAGS.clip_gradient))
   # get_hook_fn = gan.get_sequential_train_hooks(gan.GANTrainSteps(1, 1))
   # gan_train_hooks = get_hook_fn(gan_train_ops)
   # train_op = tf.group(train_op, gan_train_ops.discriminator_train_op, gan_train_ops.generator_train_op)
@@ -159,9 +160,9 @@ def gan_model_fn(features, labels, mode, params):
   train_op = tf.group(gan_train_ops.generator_train_op,
                       gan_train_ops.discriminator_train_op,
                       gan_train_ops.global_step_inc_op)
-  with tf.control_dependencies([train_op]):
-    clip_ops = tf.group(*[tf.clip_by_value(v, -0.001, 0.001) for v in tf.trainable_variables(scope='Discriminator')])
-    train_op = tf.group(train_op, clip_ops)
+  # with tf.control_dependencies([train_op]):
+  #   clip_ops = tf.group(*[tf.clip_by_value(v, -0.001, 0.001) for v in tf.trainable_variables(scope='Discriminator')])
+  #   train_op = tf.group(train_op, clip_ops)
   return tf.estimator.EstimatorSpec(
     mode,
     predictions={'image_outputs': image_outputs},
@@ -169,7 +170,6 @@ def gan_model_fn(features, labels, mode, params):
     train_op=train_op,
     eval_metric_ops={'rrmse': metric},
     training_hooks=None)
-
 
 
 def main(_):

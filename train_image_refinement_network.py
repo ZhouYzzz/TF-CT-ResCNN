@@ -8,7 +8,7 @@ import tensorflow.contrib.gan as gan
 from dataset.input_fn import prerfn_input_fn as input_fn
 # from dataset.input_fn import sparse_input_fn as input_fn
 from model.image_refinement_network import image_refinement_network, image_refinement_network_v2, image_refinement_network_v3
-from model.discriminator import discriminator, discriminator_v2, discriminator_v5
+from model.discriminator import discriminator, discriminator_v2, discriminator_v5, discriminator_v6
 from utils.summary import visualize
 from utils.rrmse import create_rrmse_metric
 
@@ -24,11 +24,24 @@ parser.add_argument('--learning_rate', type=float, default=1e-4)
 parser.add_argument('--weight_decay', type=float, default=1e-4)
 parser.add_argument('--clip_gradient', type=float, default=1e-4)
 parser.add_argument('--use_gan', type=bool, default=False)
+parser.add_argument('--crop', type=bool, default=False)
 parser.add_argument('--gen_lr', type=float, default=1e-4)
 parser.add_argument('--diss_lr', type=float, default=1e-4)
 parser.add_argument('--scale', type=float, default=50.)
+parser.add_argument('--weight_factor', type=float, default=1.)
 
-FLAGS = parser.parse_args('--model v5 --num_epoches 20 --batch_size 32 --learning_rate 4e-4 --clip_gradient 1e-2 --use_gan 1 --model_dir /home/zhouyz/Development/TF-CT-ResCNN/devlog/tmpwsywmwz4'.split(' '))
+FLAGS = parser.parse_args('--model v6 '
+                          '--num_epoches 30 '
+                          '--batch_size 16 '
+                          '--learning_rate 1e-4 '
+                          '--gen_lr 1e-4 '
+                          '--diss_lr 1e-4 '
+                          '--clip_gradient 1e2 '
+                          '--scale 5.0 '
+                          '--crop 0 '
+                          '--use_gan 1 '
+                          '--weight_factor 0.01 '
+                          '--model_dir /tmp/v6_L1_conv_gan_lsq_0.01_clip-1e2'.split(' '))
 
 
 def model_fn(features, labels, mode, params):
@@ -49,18 +62,24 @@ def model_fn(features, labels, mode, params):
     elif FLAGS.model == 'v5':
       from model.image_refinement_network import image_refinement_network_v5
       image_outputs = image_refinement_network_v5(image_inputs, training=(mode == tf.estimator.ModeKeys.TRAIN))
+    elif FLAGS.model == 'v6':
+      print('USING V6!')
+      from model.image_refinement_network import image_refinement_network_v6
+      image_outputs = image_refinement_network_v6(image_inputs, training=(mode == tf.estimator.ModeKeys.TRAIN))
     else:
       raise ValueError('No recognized model named `{}`'.format(FLAGS.model))
 
   # Define losses
-  tf.losses.mean_squared_error(image_outputs, image_labels)
+  tf.losses.absolute_difference(image_outputs, image_labels)
+  # tf.losses.mean_squared_error(image_outputs, image_labels)
   [tf.losses.add_loss(FLAGS.weight_decay * tf.nn.l2_loss(v), loss_collection=tf.GraphKeys.REGULARIZATION_LOSSES) for v in tf.trainable_variables('Projection')]
   loss = tf.losses.get_total_loss()
   image_diff = image_outputs - image_labels
+  residual_diff = image_outputs - image_inputs
 
   # Define summaries
   visualize(tf.concat([image_labels, image_inputs, image_outputs], axis=3), name='image')
-  visualize(tf.concat(image_diff, axis=3), name='image', use_relu=False)
+  visualize(tf.concat([image_diff, residual_diff], axis=3), name='diff', use_relu=False)
 
   # Define metrics
   metric = create_rrmse_metric(image_outputs, image_labels)
@@ -84,12 +103,14 @@ def model_fn(features, labels, mode, params):
 
 def gan_model_fn(features, labels, mode, params):
   # Define model inputs and labels
-  image_inputs = features['prerfn'] * 50  # the raw reconstructed medical image
-  image_labels = labels['image'] * 50
-
+  image_inputs = features['prerfn'] * FLAGS.scale  # the raw reconstructed medical image
+  image_labels = labels['image'] * FLAGS.scale
   def cropped_discriminator(inputs, generator_inputs, training=(mode == tf.estimator.ModeKeys.TRAIN)):
-    inputs = tf.random_crop(inputs, size=(FLAGS.batch_size, 1, 64, 64))
-    return discriminator_v5(inputs, training)
+    inputs = tf.concat([inputs, generator_inputs], axis=1)
+    if FLAGS.crop:
+      inputs = tf.random_crop(inputs, size=(FLAGS.batch_size, 2, 128, 128))
+    print('D v6')
+    return discriminator_v6(inputs, training)
 
   # Define the GAN model
   if FLAGS.model == 'proposed':
@@ -102,6 +123,9 @@ def gan_model_fn(features, labels, mode, params):
   elif FLAGS.model == 'v5':
     from model.image_refinement_network import image_refinement_network_v5
     generator_fn = lambda x: image_refinement_network_v5(x, training=(mode == tf.estimator.ModeKeys.TRAIN))
+  elif FLAGS.model == 'v6':
+    from model.image_refinement_network import image_refinement_network_v6
+    generator_fn = lambda x: image_refinement_network_v6(x, training=(mode == tf.estimator.ModeKeys.TRAIN))
   else:
     raise ValueError('No recognized model named `{}`'.format(FLAGS.model))
 
@@ -116,14 +140,16 @@ def gan_model_fn(features, labels, mode, params):
   # tf.train.init_from_checkpoint('/tmp/GAN', assignment_map={'Refinement/': 'Refinement/'})
 
   # Define losses
-  tf.losses.mean_squared_error(image_outputs, image_labels)
+  # tf.losses.mean_squared_error(image_outputs, image_labels)
+  tf.losses.absolute_difference(image_outputs, image_labels)
   [tf.losses.add_loss(FLAGS.weight_decay * tf.nn.l2_loss(v), loss_collection=tf.GraphKeys.REGULARIZATION_LOSSES) for v in tf.trainable_variables('Refinement')]
   loss = tf.losses.get_total_loss()
   image_diff = image_outputs - image_labels
+  residual_diff = image_outputs - image_inputs
 
   # Define summaries
   visualize(tf.concat([image_labels, image_inputs, image_outputs], axis=3), name='image')
-  visualize(tf.concat(image_diff, axis=3), name='image', use_relu=False)
+  visualize(tf.concat([image_diff, residual_diff], axis=3), name='diff', use_relu=False)
 
   # Define metrics
   metric = create_rrmse_metric(image_outputs, image_labels)
@@ -140,29 +166,34 @@ def gan_model_fn(features, labels, mode, params):
   # Define GAN losses and train_ops
   # with tf.control_dependencies([train_op]):
     # gan.losses
-  gan_loss = gan.gan_loss(model,
-                          generator_loss_fn=gan.losses.wasserstein_generator_loss,
-                          discriminator_loss_fn=gan.losses.wasserstein_discriminator_loss,
-                          gradient_penalty_weight=1.0)
-  gan_loss = gan.losses.combine_adversarial_loss(gan_loss,
-                                                 gan_model=model,
-                                                 non_adversarial_loss=loss,
-                                                 gradient_ratio=1)
-  gan_train_ops = gan.gan_train_ops(model,
-                                    gan_loss,
-                                    generator_optimizer=tf.train.AdamOptimizer(FLAGS.gen_lr),
-                                    discriminator_optimizer=tf.train.AdamOptimizer(FLAGS.diss_lr),
-                                    transform_grads_fn=training.clip_gradient_norms_fn(max_norm=FLAGS.clip_gradient))
-  # get_hook_fn = gan.get_sequential_train_hooks(gan.GANTrainSteps(1, 1))
-  # gan_train_hooks = get_hook_fn(gan_train_ops)
-  # train_op = tf.group(train_op, gan_train_ops.discriminator_train_op, gan_train_ops.generator_train_op)
-  #
-  train_op = tf.group(gan_train_ops.generator_train_op,
-                      gan_train_ops.discriminator_train_op,
-                      gan_train_ops.global_step_inc_op)
-  # with tf.control_dependencies([train_op]):
-  #   clip_ops = tf.group(*[tf.clip_by_value(v, -0.001, 0.001) for v in tf.trainable_variables(scope='Discriminator')])
-  #   train_op = tf.group(train_op, clip_ops)
+  with tf.name_scope('losses'):
+    gan_loss = gan.gan_loss(model,
+                            generator_loss_fn=gan.losses.least_squares_generator_loss,
+                            discriminator_loss_fn=gan.losses.least_squares_discriminator_loss)
+                            # gradient_penalty_weight=1.0)
+    gan_loss = gan.losses.combine_adversarial_loss(gan_loss,
+                                                   gan_model=model,
+                                                   non_adversarial_loss=loss,
+                                                   weight_factor=FLAGS.weight_factor)
+  with tf.name_scope('train_ops'):
+    gan_train_ops = gan.gan_train_ops(model,
+                                      gan_loss,
+                                      generator_optimizer=tf.train.AdamOptimizer(FLAGS.gen_lr),
+                                      discriminator_optimizer=tf.train.AdamOptimizer(FLAGS.diss_lr),
+                                      summarize_gradients=True,
+                                      colocate_gradients_with_ops=True,
+                                      aggregation_method=tf.AggregationMethod.EXPERIMENTAL_ACCUMULATE_N,
+                                      transform_grads_fn=training.clip_gradient_norms_fn(max_norm=FLAGS.clip_gradient))
+    # get_hook_fn = gan.get_sequential_train_hooks(gan.GANTrainSteps(1, 1))
+    # gan_train_hooks = get_hook_fn(gan_train_ops)
+    # train_op = tf.group(train_op, gan_train_ops.discriminator_train_op, gan_train_ops.generator_train_op)
+    #
+    train_op = tf.group(gan_train_ops.generator_train_op,
+                        gan_train_ops.discriminator_train_op,
+                        gan_train_ops.global_step_inc_op)
+    # with tf.control_dependencies([train_op]):
+    #   clip_ops = tf.group(*[tf.clip_by_value(v, -0.001, 0.001) for v in tf.trainable_variables(scope='Discriminator')])
+    #   train_op = tf.group(train_op, clip_ops)
   return tf.estimator.EstimatorSpec(
     mode,
     predictions={'image_outputs': image_outputs},

@@ -23,7 +23,9 @@ parser.add_argument('--learning_rate', type=float, default=1e-4)
 parser.add_argument('--weight_decay', type=float, default=1e-4)
 parser.add_argument('--clip_gradient', type=float, default=1e-4)
 
-FLAGS, _ = parser.parse_known_args()
+FLAGS, _ = parser.parse_known_args('--model v2 '
+                                   '--model_dir ./devlog/prj '
+                                   '--learning_rate 5e-5 '.split(' '))
 
 
 def model_fn(features, labels, mode, params):
@@ -59,7 +61,8 @@ def model_fn(features, labels, mode, params):
 
   train_op = training.create_train_op(
     total_loss=loss,
-    optimizer=tf.train.MomentumOptimizer(learning_rate=FLAGS.learning_rate, momentum=0.9),
+    # optimizer=tf.train.MomentumOptimizer(learning_rate=FLAGS.learning_rate, momentum=0.9),
+    optimizer=tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate),
     global_step=tf.train.get_or_create_global_step(),
     update_ops=None,
     variables_to_train=tf.trainable_variables(scope='Projection'),
@@ -76,15 +79,15 @@ def model_fn(features, labels, mode, params):
 def main(_):
   config = tf.estimator.RunConfig(save_checkpoints_secs=1e9)
   estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=FLAGS.model_dir, config=config)
-  estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1),
-                  hooks=[tf.train.LoggingTensorHook(['total_loss', 'rrmse'], every_n_iter=100)],
-                  max_steps=1)
-  print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
-  if FLAGS.pretrain_steps > 0:
-    estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1),
-                    hooks=[tf.train.LoggingTensorHook(['total_loss', 'rrmse'], every_n_iter=100)],
-                    steps=FLAGS.pretrain_steps)
-    print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
+  # estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1),
+  #                 hooks=[tf.train.LoggingTensorHook(['total_loss', 'rrmse'], every_n_iter=100)],
+  #                 max_steps=1)
+  # print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
+  # if FLAGS.pretrain_steps > 0:
+  #   estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1),
+  #                   hooks=[tf.train.LoggingTensorHook(['total_loss', 'rrmse'], every_n_iter=100)],
+  #                   steps=FLAGS.pretrain_steps)
+  #   print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
 
   for _ in range(FLAGS.num_epoches):
     estimator.train(lambda: input_fn('train', batch_size=FLAGS.batch_size, num_epochs=1),

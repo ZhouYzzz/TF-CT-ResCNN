@@ -82,6 +82,37 @@ def discriminator_v5(inputs, training=False):
   return inputs
 
 
+def discriminator_v6(inputs, training=False):
+  conv_args = {
+    'data_format': 'channels_first',
+    'use_bias': True,
+    'kernel_regularizer': tf.contrib.layers.l2_regularizer(1e-4)
+  }
+  nc = 64
+  inputs = tf.layers.conv2d(inputs, nc, (3, 3), (2, 2), padding='same', **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)
+  inputs = tf.layers.conv2d(inputs, nc, (3, 3), (1, 1), padding='same', **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)
+  inputs = tf.layers.conv2d(inputs, nc * 2, (3, 3), (2, 2), padding='same', **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)  # 2
+  inputs = tf.layers.conv2d(inputs, nc * 2, (3, 3), (1, 1), padding='same', **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)
+  inputs = tf.layers.conv2d(inputs, nc * 4, (3, 3), (2, 2), padding='same', **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)  # 3
+  inputs = tf.layers.conv2d(inputs, nc * 4, (3, 3), (1, 1), padding='same', **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)
+  inputs = tf.layers.conv2d(inputs, nc * 8, (3, 3), (2, 2), padding='same', **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)  # 4
+  inputs = tf.layers.conv2d(inputs, nc * 8, (3, 3), (1, 1), padding='same', **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)
+  inputs = tf.layers.conv2d(inputs, nc * 8, (3, 3), (2, 2), padding='same', **conv_args)
+  inputs = batch_norm_relu(inputs, training=training)
+  inputs = tf.layers.flatten(inputs)
+  inputs = tf.layers.dense(inputs, 1024)
+  inputs = tf.layers.dense(inputs, 1)
+  return inputs
+
+
 if __name__ == '__main__':
   x = tf.placeholder(tf.float32, shape=(None, 1, 64, 64))
   outputs = discriminator(x, training=True)

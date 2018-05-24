@@ -171,7 +171,8 @@ def image_refinement_network_v5(inputs, training=False):
   """Implement the transform network in arXiv 1706.09:
   Perceptual Adversarial Networks for Image-to-Image Transformation"""
   shared_args = {
-    'kernel_initializer': tf.contrib.layers.xavier_initializer()
+    # 'kernel_initializer': tf.contrib.layers.xavier_initializer()
+    'kernel_initializer': tf.random_normal_initializer(stddev=1e-3)
   }
   conv_args = {
     'padding': 'same',
@@ -181,55 +182,296 @@ def image_refinement_network_v5(inputs, training=False):
     'padding': 'valid',
     **shared_args
   }
+  nf = 16
   raw = inputs
-  inputs = conv2d(inputs, filters=16, kernel_size=(3, 3), strides=(2, 2), **conv_args)
+  inputs = conv2d(inputs, filters=nf*1, kernel_size=(3, 3), strides=(2, 2), **conv_args)
   inputs = batch_norm_relu(inputs, training=training)  # 1
   # print(inputs)
-  inputs = conv2d(inputs, filters=32, kernel_size=(3, 3), strides=(2, 2), **conv_args)
+  inputs = conv2d(inputs, filters=nf*2, kernel_size=(3, 3), strides=(2, 2), **conv_args)
   inputs = batch_norm_relu(inputs, training=training)  # 2
   # print(inputs)
   shortcut_2 = inputs
-  inputs = conv2d(inputs, filters=64, kernel_size=(3, 3), strides=(2, 2), **conv_args_2)
+  inputs = conv2d(inputs, filters=nf*4, kernel_size=(3, 3), strides=(2, 2), **conv_args_2)
   inputs = batch_norm_relu(inputs, training=training)  # 3
   # print(inputs)
   shortcut_3 = inputs
-  inputs = conv2d(inputs, filters=128, kernel_size=(3, 3), strides=(2, 2), **conv_args)
+  inputs = conv2d(inputs, filters=nf*8, kernel_size=(3, 3), strides=(2, 2), **conv_args)
   inputs = batch_norm_relu(inputs, training=training)  # 4
   # print(inputs)
   shortcut_4 = inputs
-  inputs = conv2d(inputs, filters=128, kernel_size=(3, 3), strides=(2, 2), **conv_args)
+  inputs = conv2d(inputs, filters=nf*16, kernel_size=(3, 3), strides=(2, 2), **conv_args)
   inputs = batch_norm_relu(inputs, training=training)  # 5
   # print(inputs)
   shortcut_5 = inputs
-  inputs = conv2d(inputs, filters=128, kernel_size=(3, 3), strides=(2, 2), **conv_args)
+  inputs = conv2d(inputs, filters=nf*32, kernel_size=(3, 3), strides=(2, 2), **conv_args)
   inputs = batch_norm_relu(inputs, training=training)  # 6
   # print(inputs)
-  inputs = conv2d_transpose(inputs, filters=128, kernel_size=(4, 4), strides=(2, 2), **conv_args)
+  inputs = conv2d_transpose(inputs, filters=nf*16, kernel_size=(4, 4), strides=(2, 2), **conv_args)
   inputs = batch_norm_relu(inputs, training=training)  # 7
   # print(inputs)
   inputs = tf.concat([inputs, shortcut_5], axis=1)
-  inputs = conv2d_transpose(inputs, filters=64, kernel_size=(4, 4), strides=(2, 2), **conv_args)
+  inputs = conv2d_transpose(inputs, filters=nf*8, kernel_size=(4, 4), strides=(2, 2), **conv_args)
   inputs = batch_norm_relu(inputs, training=training)  # 8
   # print(inputs)
   inputs = tf.concat([inputs, shortcut_4], axis=1)
-  inputs = conv2d_transpose(inputs, filters=32, kernel_size=(4, 4), strides=(2, 2), **conv_args)
+  inputs = conv2d_transpose(inputs, filters=nf*4, kernel_size=(4, 4), strides=(2, 2), **conv_args)
   inputs = batch_norm_relu(inputs, training=training)  # 9
   # print(inputs)
   inputs = tf.concat([inputs, shortcut_3], axis=1)
-  inputs = conv2d_transpose(inputs, filters=16, kernel_size=(4, 4), strides=(2, 2), **conv_args_2)
+  inputs = conv2d_transpose(inputs, filters=nf*2, kernel_size=(4, 4), strides=(2, 2), **conv_args_2)
   inputs = batch_norm_relu(inputs, training=training)  # 10
   # print(inputs)
   inputs = tf.concat([inputs, shortcut_2], axis=1)
-  inputs = conv2d_transpose(inputs, filters=16, kernel_size=(4, 4), strides=(2, 2), **conv_args)
+  inputs = conv2d_transpose(inputs, filters=nf*1, kernel_size=(4, 4), strides=(2, 2), **conv_args)
   inputs = batch_norm_relu(inputs, training=training)  # 11
   # print(inputs)
   inputs = conv2d_transpose(inputs, filters=1, kernel_size=(4, 4), strides=(2, 2), **conv_args)
   # inputs = batch_norm_relu(inputs, training=training)  # 12
   # print(inputs)
-  inputs += raw
+  # inputs += raw
+  return inputs
+
+
+def image_refinement_network_v6(inputs, training=False):
+  """The U-NET structure used by Kaichao, ref: initializeDagChallenge.m"""
+  raw = inputs
+  nf = 64  # number of the first filters
+  args = {'kernel_initializer': tf.random_normal_initializer(stddev=1e-5)}
+  # STAGE I
+  inputs = tf.layers.conv2d(inputs=inputs,
+                            filters=nf,
+                            kernel_size=(3, 3),
+                            strides=(1, 1),
+                            padding='same',
+                            data_format='channels_first',
+                            **args)
+  inputs = batch_norm_relu(inputs=inputs, training=training)
+  inputs = tf.layers.conv2d(inputs=inputs,
+                            filters=nf,
+                            kernel_size=(3, 3),
+                            strides=(1, 1),
+                            padding='same',
+                            data_format='channels_first',
+                            **args)
+  inputs = batch_norm_relu(inputs=inputs, training=training)
+  relu_x1 = inputs
+  inputs = tf.layers.max_pooling2d(inputs=inputs,
+                                   pool_size=(2, 2),
+                                   strides=(2, 2),
+                                   padding='same',
+                                   data_format='channels_first')
+  # STAGE II
+  inputs = tf.layers.conv2d(inputs=inputs,
+                            filters=nf*2,
+                            kernel_size=(3, 3),
+                            strides=(1, 1),
+                            padding='same',
+                            data_format='channels_first',
+                            **args)
+  inputs = batch_norm_relu(inputs=inputs, training=training)
+  inputs = tf.layers.conv2d(inputs=inputs,
+                            filters=nf*2,
+                            kernel_size=(3, 3),
+                            strides=(1, 1),
+                            padding='same',
+                            data_format='channels_first',
+                            **args)
+  inputs = batch_norm_relu(inputs=inputs, training=training)
+  relu_x2 = inputs
+  inputs = tf.layers.max_pooling2d(inputs=inputs,
+                                   pool_size=(2, 2),
+                                   strides=(2, 2),
+                                   padding='same',
+                                   data_format='channels_first')
+  # STAGE III
+  inputs = tf.layers.conv2d(inputs=inputs,
+                            filters=nf*4,
+                            kernel_size=(3, 3),
+                            strides=(1, 1),
+                            padding='same',
+                            data_format='channels_first',
+                            **args)
+  inputs = batch_norm_relu(inputs=inputs, training=training)
+  inputs = tf.layers.conv2d(inputs=inputs,
+                            filters=nf*4,
+                            kernel_size=(3, 3),
+                            strides=(1, 1),
+                            padding='same',
+                            data_format='channels_first',
+                            **args)
+  inputs = batch_norm_relu(inputs=inputs, training=training)
+  relu_x4 = inputs
+  inputs = tf.layers.max_pooling2d(inputs=inputs,
+                                   pool_size=(2, 2),
+                                   strides=(2, 2),
+                                   padding='same',
+                                   data_format='channels_first')
+  # STAGE IV
+  inputs = tf.layers.conv2d(inputs=inputs,
+                            filters=nf*8,
+                            kernel_size=(3, 3),
+                            strides=(1, 1),
+                            padding='same',
+                            data_format='channels_first',
+                            **args)
+  inputs = batch_norm_relu(inputs=inputs, training=training)
+  inputs = tf.layers.conv2d(inputs=inputs,
+                            filters=nf*8,
+                            kernel_size=(3, 3),
+                            strides=(1, 1),
+                            padding='same',
+                            data_format='channels_first',
+                            **args)
+  inputs = batch_norm_relu(inputs=inputs, training=training)
+  relu_x8 = inputs
+  inputs = tf.layers.max_pooling2d(inputs=inputs,
+                                   pool_size=(2, 2),
+                                   strides=(2, 2),
+                                   padding='valid',
+                                   data_format='channels_first')
+  # STAGE V
+  inputs = tf.layers.conv2d(inputs=inputs,
+                            filters=nf * 16,
+                            kernel_size=(3, 3),
+                            strides=(1, 1),
+                            padding='same',
+                            data_format='channels_first',
+                            **args)
+  inputs = batch_norm_relu(inputs=inputs, training=training)
+  inputs = tf.layers.conv2d(inputs=inputs,
+                            filters=nf * 8,
+                            kernel_size=(3, 3),
+                            strides=(1, 1),
+                            padding='same',
+                            data_format='channels_first',
+                            **args)
+  inputs = batch_norm_relu(inputs=inputs, training=training)
+  inputs = tf.layers.conv2d_transpose(inputs=inputs,
+                                      filters=nf * 8,
+                                      kernel_size=(3, 3),
+                                      strides=(2, 2),
+                                      padding='valid',
+                                      data_format='channels_first',
+                                      use_bias=False,
+                                      **args)
+  # U-STAGE IV
+  inputs = tf.concat([inputs, relu_x8], axis=1)
+  inputs = tf.layers.conv2d(inputs=inputs,
+                            filters=nf * 8,
+                            kernel_size=(3, 3),
+                            strides=(1, 1),
+                            padding='same',
+                            data_format='channels_first',
+                            **args)
+  inputs = batch_norm_relu(inputs=inputs, training=training)
+  inputs = tf.layers.conv2d(inputs=inputs,
+                            filters=nf * 4,
+                            kernel_size=(3, 3),
+                            strides=(1, 1),
+                            padding='same',
+                            data_format='channels_first',
+                            **args)
+  inputs = batch_norm_relu(inputs=inputs, training=training)
+  inputs = tf.layers.conv2d_transpose(inputs=inputs,
+                                      filters=nf * 4,
+                                      kernel_size=(3, 3),
+                                      strides=(2, 2),
+                                      padding='same',
+                                      data_format='channels_first',
+                                      use_bias=False,
+                                      **args)
+  # U-STAGE III
+  inputs = tf.concat([inputs, relu_x4], axis=1)
+  inputs = tf.layers.conv2d(inputs=inputs,
+                            filters=nf * 4,
+                            kernel_size=(3, 3),
+                            strides=(1, 1),
+                            padding='same',
+                            data_format='channels_first',
+                            **args)
+  inputs = batch_norm_relu(inputs=inputs, training=training)
+  inputs = tf.layers.conv2d(inputs=inputs,
+                            filters=nf * 2,
+                            kernel_size=(3, 3),
+                            strides=(1, 1),
+                            padding='same',
+                            data_format='channels_first',
+                            **args)
+  inputs = batch_norm_relu(inputs=inputs, training=training)
+  inputs = tf.layers.conv2d_transpose(inputs=inputs,
+                                      filters=nf * 2,
+                                      kernel_size=(3, 3),
+                                      strides=(2, 2),
+                                      padding='same',
+                                      data_format='channels_first',
+                                      use_bias=False,
+                                      **args)
+  # U-STAGE II
+  inputs = tf.concat([inputs, relu_x2], axis=1)
+  inputs = tf.layers.conv2d(inputs=inputs,
+                            filters=nf * 2,
+                            kernel_size=(3, 3),
+                            strides=(1, 1),
+                            padding='same',
+                            data_format='channels_first',
+                            **args)
+  inputs = batch_norm_relu(inputs=inputs, training=training)
+  inputs = tf.layers.conv2d(inputs=inputs,
+                            filters=nf * 1,
+                            kernel_size=(3, 3),
+                            strides=(1, 1),
+                            padding='same',
+                            data_format='channels_first',
+                            **args)
+  inputs = batch_norm_relu(inputs=inputs, training=training)
+  inputs = tf.layers.conv2d_transpose(inputs=inputs,
+                                      filters=nf * 1,
+                                      kernel_size=(3, 3),
+                                      strides=(2, 2),
+                                      padding='same',
+                                      data_format='channels_first',
+                                      use_bias=False,
+                                      **args)
+  # U-STAGE I
+  inputs = tf.concat([inputs, relu_x1], axis=1)
+  inputs = tf.layers.conv2d(inputs=inputs,
+                            filters=nf * 1,
+                            kernel_size=(3, 3),
+                            strides=(1, 1),
+                            padding='same',
+                            data_format='channels_first',
+                            **args)
+  inputs = batch_norm_relu(inputs=inputs, training=training)
+  inputs = tf.layers.conv2d(inputs=inputs,
+                            filters=nf * 1,
+                            kernel_size=(3, 3),
+                            strides=(1, 1),
+                            padding='same',
+                            data_format='channels_first',
+                            **args)
+  inputs = batch_norm_relu(inputs=inputs, training=training)
+  inputs = tf.layers.conv2d(inputs=inputs,
+                            filters=1,
+                            kernel_size=(3, 3),
+                            strides=(1, 1),
+                            padding='same',
+                            data_format='channels_first',
+                            **args)
+  if False:
+    inputs = tf.concat([inputs, raw], axis=1)
+    print(inputs)
+    inputs = tf.layers.conv2d(inputs=inputs,
+                              filters=1,
+                              kernel_size=(3, 3),
+                              strides=(1, 1),
+                              padding='same',
+                              data_format='channels_first',
+                              **args)
+  else:
+    inputs = inputs + raw
   return inputs
 
 
 if __name__ == '__main__':
   x = tf.placeholder(tf.float32, shape=(None, 1, 200, 200))
-  outputs = image_refinement_network_v5(inputs=x)
+  outputs = image_refinement_network_v6(inputs=x)

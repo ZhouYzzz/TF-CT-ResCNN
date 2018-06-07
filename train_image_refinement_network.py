@@ -5,7 +5,8 @@ import tensorflow.contrib.losses as losses
 import tensorflow.contrib.layers as layers
 import tensorflow.contrib.gan as gan
 
-from dataset.input_fn import prerfn_input_fn as input_fn
+from dataset.input_fn import prerfn_input_fn_v2 as input_fn
+# print('USING FINAL V2 PRJ MODEL')
 # from dataset.input_fn import sparse_input_fn as input_fn
 from model.image_refinement_network import image_refinement_network, image_refinement_network_v2, image_refinement_network_v3
 from model.discriminator import discriminator, discriminator_v2, discriminator_v5, discriminator_v6
@@ -29,19 +30,23 @@ parser.add_argument('--gen_lr', type=float, default=1e-4)
 parser.add_argument('--diss_lr', type=float, default=1e-4)
 parser.add_argument('--scale', type=float, default=50.)
 parser.add_argument('--weight_factor', type=float, default=1.)
+parser.add_argument('--gradient_ratio', type=float, default=1.)
 
 FLAGS = parser.parse_args('--model v6 '
-                          '--num_epoches 30 '
+                          '--num_epoches 60 '
                           '--batch_size 16 '
                           '--learning_rate 1e-4 '
                           '--gen_lr 1e-4 '
                           '--diss_lr 1e-4 '
-                          '--clip_gradient 1e2 '
-                          '--scale 5.0 '
+                          '--clip_gradient 50 '
+                          '--scale 5 '
                           '--crop 0 '
                           '--use_gan 1 '
                           '--weight_factor 0.01 '
-                          '--model_dir /tmp/v6_L1_conv_gan_lsq_0.01_clip-1e2'.split(' '))
+                          '--gradient_ratio 0.1 '
+                          '--model_dir /tmp/v2_v6_L1_conv_gan_0.01_noadd_sigmoid'
+                          # '--model_dir /tmp/test_speed'
+                          .split(' '))
 
 
 def model_fn(features, labels, mode, params):
@@ -85,9 +90,15 @@ def model_fn(features, labels, mode, params):
   metric = create_rrmse_metric(image_outputs, image_labels)
   tf.summary.scalar('rrmse', tf.identity(metric[1], 'rrmse'))
 
+  gen_lr = tf.train.exponential_decay(FLAGS.learning_rate,
+                                      tf.train.get_or_create_global_step(),
+                                      decay_steps=10000,
+                                      decay_rate=0.9,
+                                      staircase=True,)
+  print('Us decay')
   train_op = training.create_train_op(
     total_loss=loss,
-    optimizer=tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate),
+    optimizer=tf.train.AdamOptimizer(learning_rate=gen_lr),
     global_step=tf.train.get_or_create_global_step(),
     update_ops=None,
     variables_to_train=tf.trainable_variables(scope='Refinement'),
@@ -107,10 +118,15 @@ def gan_model_fn(features, labels, mode, params):
   image_labels = labels['image'] * FLAGS.scale
   def cropped_discriminator(inputs, generator_inputs, training=(mode == tf.estimator.ModeKeys.TRAIN)):
     inputs = tf.concat([inputs, generator_inputs], axis=1)
+    print(inputs)
     if FLAGS.crop:
-      inputs = tf.random_crop(inputs, size=(FLAGS.batch_size, 2, 128, 128))
+      print('CROP')
+      inputs = tf.random_crop(inputs, size=(FLAGS.batch_size, 2, 128, 128)) # previous 128
     print('D v6')
-    return discriminator_v6(inputs, training)
+    inputs = discriminator_v6(inputs, training)
+    print('Using sigmoid for dis outputs')
+    inputs = tf.nn.sigmoid(inputs)
+    return inputs #discriminator_v6(inputs, training)
 
   # Define the GAN model
   if FLAGS.model == 'proposed':
@@ -136,6 +152,9 @@ def gan_model_fn(features, labels, mode, params):
                         generator_scope='Refinement',
                         discriminator_scope='Discriminator',
                         check_shapes=True)
+  with tf.name_scope('dis_outputs'):
+    tf.summary.histogram(name='dis_gen_outputs', values=model.discriminator_gen_outputs)
+    tf.summary.histogram(name='dis_real_outputs', values=model.discriminator_real_outputs)
   image_outputs = model.generated_data
   # tf.train.init_from_checkpoint('/tmp/GAN', assignment_map={'Refinement/': 'Refinement/'})
 
@@ -146,6 +165,18 @@ def gan_model_fn(features, labels, mode, params):
   loss = tf.losses.get_total_loss()
   image_diff = image_outputs - image_labels
   residual_diff = image_outputs - image_inputs
+
+  if False:
+    print('Use perceptual loss')
+    perc1 = tf.get_default_graph().get_tensor_by_name('Discriminator/x2:0')
+    perc2 = tf.get_default_graph().get_tensor_by_name('Discriminator/x4:0')
+    perc1r = tf.get_default_graph().get_tensor_by_name('Discriminator_1/x2:0')
+    perc2r = tf.get_default_graph().get_tensor_by_name('Discriminator_1/x4:0')
+    perc1_loss = tf.losses.absolute_difference(perc1, perc1r)
+    tf.summary.scalar('perc1_loss', perc1_loss)
+    perc2_loss = tf.losses.absolute_difference(perc2, perc2r)
+    tf.summary.scalar('perc2_loss', perc2_loss)
+    loss += 0.1 * perc1_loss + 0.1 * perc2_loss
 
   # Define summaries
   visualize(tf.concat([image_labels, image_inputs, image_outputs], axis=3), name='image')
@@ -174,11 +205,20 @@ def gan_model_fn(features, labels, mode, params):
     gan_loss = gan.losses.combine_adversarial_loss(gan_loss,
                                                    gan_model=model,
                                                    non_adversarial_loss=loss,
+                                                   # gradient_ratio=FLAGS.gradient_ratio)
                                                    weight_factor=FLAGS.weight_factor)
+    # print('USING GRADIENT RATIO')
   with tf.name_scope('train_ops'):
+    gen_lr = tf.train.exponential_decay(FLAGS.learning_rate,
+                                        tf.train.get_or_create_global_step(),
+                                        decay_steps=10000,
+                                        decay_rate=0.9,
+                                        staircase=True,)
+    print('Us decay')
+    gen_lr = FLAGS.learning_rate
     gan_train_ops = gan.gan_train_ops(model,
                                       gan_loss,
-                                      generator_optimizer=tf.train.AdamOptimizer(FLAGS.gen_lr),
+                                      generator_optimizer=tf.train.AdamOptimizer(gen_lr),
                                       discriminator_optimizer=tf.train.AdamOptimizer(FLAGS.diss_lr),
                                       summarize_gradients=True,
                                       colocate_gradients_with_ops=True,
@@ -218,10 +258,13 @@ def main(_):
                     max_steps=FLAGS.pretrain_steps)
     print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
 
+  from time import sleep
   for _ in range(FLAGS.num_epoches):
     estimator.train(lambda: input_fn('train', batch_size=FLAGS.batch_size, num_epochs=1),
                     hooks=[tf.train.LoggingTensorHook(['total_loss', 'rrmse'], every_n_iter=100)])
     print(estimator.evaluate(lambda: input_fn('val', batch_size=FLAGS.batch_size, num_epochs=1)))
+    sleep(60)  # wait 1 min to cool down the GPU in summer
+
 
 
 if __name__ == '__main__':

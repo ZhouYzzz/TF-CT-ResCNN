@@ -9,14 +9,10 @@ from utils.features import feature_float
 
 def model_fn(features, labels, mode):
   """FBP network only"""
+  from model import fbp_network, slice_concat
   inputs = features['sparse3']
-  from model.projection_estimation_network_v2 import projection_estimation_network_v2
-  with tf.variable_scope('Projection'):
-    projection_outputs = projection_estimation_network_v2(inputs, training=(mode == tf.estimator.ModeKeys.TRAIN))
-    tf.train.init_from_checkpoint('../devlog/prj/', assignment_map={'Projection/': 'Projection/'})
-  from model import fbp_network
-  with tf.variable_scope('FBP'):
-    outputs = fbp_network(projection_outputs)
+  inputs = slice_concat([inputs for _ in range(5)], axis=3)
+  outputs = fbp_network(inputs)
   return tf.estimator.EstimatorSpec(mode=mode,
                                     predictions=outputs)
 
@@ -30,7 +26,7 @@ def main(record_name):
   features = iterator.get_next()
   model = model_fn(features, features, mode=tf.estimator.ModeKeys.PREDICT)
 
-  writer = tf.python_io.TFRecordWriter('../dataset/{}.final.tfrecords'.format(record_name))
+  writer = tf.python_io.TFRecordWriter('../dataset/{}.sparse.tfrecords'.format(record_name))
   with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
     try:
@@ -39,16 +35,15 @@ def main(record_name):
         results = results.reshape(-1, 200 * 200)
         results = np.vsplit(results, results.shape[0])
         for r in results:
-          writer.write(tf.train.Example(features=tf.train.Features(feature={'final':
+          writer.write(tf.train.Example(features=tf.train.Features(feature={'sparse':
                                                                             feature_float(r.reshape(-1).tolist())})).SerializeToString())
     except:
       print('End of sequence {}'.format(record_name))
       writer.close()
-  tf.reset_default_graph()
 
 
 if __name__ == '__main__':
-  for i in range(10):
+  for i in range(0):
     record_name = 'train_{}'.format(i)
     main(record_name=record_name)
   main(record_name='val')

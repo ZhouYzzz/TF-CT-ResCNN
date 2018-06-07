@@ -457,7 +457,7 @@ def image_refinement_network_v6(inputs, training=False):
                             padding='same',
                             data_format='channels_first',
                             **args)
-  if False:
+  if True:
     inputs = tf.concat([inputs, raw], axis=1)
     print(inputs)
     inputs = tf.layers.conv2d(inputs=inputs,

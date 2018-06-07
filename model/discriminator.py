@@ -89,14 +89,19 @@ def discriminator_v6(inputs, training=False):
     'kernel_regularizer': tf.contrib.layers.l2_regularizer(1e-4)
   }
   nc = 64
+  # print('Using dis v6, channel change to 32, previously 64')
   inputs = tf.layers.conv2d(inputs, nc, (3, 3), (2, 2), padding='same', **conv_args)
   inputs = batch_norm_relu(inputs, training=training)
   inputs = tf.layers.conv2d(inputs, nc, (3, 3), (1, 1), padding='same', **conv_args)
   inputs = batch_norm_relu(inputs, training=training)
+  inputs = tf.identity(inputs, 'x2')
+  print(inputs)
   inputs = tf.layers.conv2d(inputs, nc * 2, (3, 3), (2, 2), padding='same', **conv_args)
   inputs = batch_norm_relu(inputs, training=training)  # 2
   inputs = tf.layers.conv2d(inputs, nc * 2, (3, 3), (1, 1), padding='same', **conv_args)
   inputs = batch_norm_relu(inputs, training=training)
+  inputs = tf.identity(inputs, 'x4')
+  print(inputs)
   inputs = tf.layers.conv2d(inputs, nc * 4, (3, 3), (2, 2), padding='same', **conv_args)
   inputs = batch_norm_relu(inputs, training=training)  # 3
   inputs = tf.layers.conv2d(inputs, nc * 4, (3, 3), (1, 1), padding='same', **conv_args)

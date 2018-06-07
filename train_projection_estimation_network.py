@@ -24,8 +24,9 @@ parser.add_argument('--weight_decay', type=float, default=1e-4)
 parser.add_argument('--clip_gradient', type=float, default=1e-4)
 
 FLAGS, _ = parser.parse_known_args('--model v2 '
-                                   '--model_dir ./devlog/prj '
-                                   '--learning_rate 5e-5 '.split(' '))
+                                   '--model_dir /tmp/prj_L1 '
+                                   '--num_epoches 20 '
+                                   '--learning_rate 1e-4 '.split(' '))
 
 
 def model_fn(features, labels, mode, params):
@@ -47,13 +48,17 @@ def model_fn(features, labels, mode, params):
     image_outputs = fbp_subnet(projection_outputs)
 
   # Define losses
-  tf.losses.mean_squared_error(projection_outputs, full_projection_labels)
+  # tf.losses.mean_squared_error(projection_outputs, full_projection_labels)
+  tf.losses.absolute_difference(projection_outputs, full_projection_labels)
   [tf.losses.add_loss(FLAGS.weight_decay * tf.nn.l2_loss(v), loss_collection=tf.GraphKeys.REGULARIZATION_LOSSES) for v in tf.trainable_variables('Projection')]
   loss = tf.losses.get_total_loss()
+
+  image_diff = image_outputs - labels['image']
 
   # Define summaries
   visualize(tf.concat([labels['image'], image_outputs], axis=3), name='image')
   visualize(tf.concat([full_projection_labels, projection_outputs], axis=2), name='projection')
+  visualize(image_diff, name='diff')
 
   # Define metrics
   metric = create_rrmse_metric(image_outputs, labels['image'])
@@ -77,7 +82,7 @@ def model_fn(features, labels, mode, params):
 
 
 def main(_):
-  config = tf.estimator.RunConfig(save_checkpoints_secs=1e9)
+  config = tf.estimator.RunConfig(save_checkpoints_secs=1e9, keep_checkpoint_max=20)
   estimator = tf.estimator.Estimator(model_fn=model_fn, model_dir=FLAGS.model_dir, config=config)
   # estimator.train(lambda: input_fn('train', batch_size=1, num_epochs=1),
   #                 hooks=[tf.train.LoggingTensorHook(['total_loss', 'rrmse'], every_n_iter=100)],

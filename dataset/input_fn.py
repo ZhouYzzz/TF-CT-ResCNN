@@ -61,7 +61,40 @@ def prerfn_input_fn(mode='train',
 
   iterator = dataset.make_one_shot_iterator()
   example, pair = iterator.get_next()
-  features = {'inputs': example['sparse3'], 'prerfn': pair['prerfn']}
+  features = {'inputs': example['sparse3'], 'prerfn': pair['prerfn'], 'image': example['image']}
+  labels = example
+  return features, labels
+
+def prerfn_input_fn_v2(mode='train',
+                    batch_size=16,
+                    num_epochs=None,
+                    shffle=False):
+  if mode == 'train':
+    tfrecord_files = [os.path.join(os.path.dirname(__file__), 'train_{}.tfrecords'.format(i)) for i in range(10)]
+    attached_tfrecord_files = [os.path.join(os.path.dirname(__file__), 'train_{}.final.tfrecords'.format(i)) for i in range(10)]
+  elif mode == 'val':
+    tfrecord_files = [os.path.join(os.path.dirname(__file__), 'val.tfrecords')]
+    attached_tfrecord_files = [os.path.join(os.path.dirname(__file__), 'val.final.tfrecords')]
+  else:
+    raise ValueError(mode)
+
+  dataset = tf.data.TFRecordDataset(filenames=tfrecord_files)  # type: tf.data.Dataset
+  dataset = dataset.map(lambda s: tf.parse_single_example(s, features=train_example_spec()))
+  attached_dataset = tf.data.TFRecordDataset(filenames=attached_tfrecord_files)  # type: tf.data.Dataset
+  attached_dataset = attached_dataset.map(lambda s: tf.parse_single_example(s, features={'final': tf.FixedLenFeature(shape=(info.IMG_DEPTH, info.IMG_HEIGHT, info.IMG_WIDTH), dtype=tf.float32)}))
+
+  dataset = tf.data.Dataset.zip((dataset, attached_dataset))
+
+  dataset = dataset.repeat(num_epochs)
+  if shffle:
+    dataset = dataset.shuffle(batch_size)
+
+  dataset = dataset.prefetch(batch_size)
+  dataset = dataset.batch(batch_size)
+
+  iterator = dataset.make_one_shot_iterator()
+  example, pair = iterator.get_next()
+  features = {'inputs': example['sparse3'], 'prerfn': pair['final']}
   labels = example
   return features, labels
 
